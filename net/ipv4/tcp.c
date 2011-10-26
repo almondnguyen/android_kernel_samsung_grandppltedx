@@ -2739,6 +2739,15 @@ void tcp_get_info(const struct sock *sk, struct tcp_info *info)
 
 	rate = READ_ONCE(sk->sk_max_pacing_rate);
 	info->tcpi_max_pacing_rate = rate != ~0U ? rate : ~0ULL;
+
+	/*
+	* Expose reference count for socket.
+	*/
+	if (NULL != sk->sk_socket) {
+		struct file *filep = sk->sk_socket->file;
+		if (NULL != filep)
+			info->tcpi_count = atomic_read(&filep->f_count);
+	}
 }
 EXPORT_SYMBOL_GPL(tcp_get_info);
 
