@@ -2079,6 +2079,7 @@ mtp_function_bind(struct usb_configuration *c, struct usb_function *f)
 	if (id < 0)
 		return id;
 	mtp_interface_desc.bInterfaceNumber = id;
+	mtp_ext_config_desc.function.bFirstInterfaceNumber = id;
 
 	ptp_interface_desc.bInterfaceNumber = id;
 	DBG(cdev, "mtp_function_bind bInterfaceNumber = id= %d\n", id);
