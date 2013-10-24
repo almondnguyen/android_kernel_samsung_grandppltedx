@@ -2222,8 +2222,11 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		struct hd_struct *part;
 		int cpu;
 
-		cpu = part_stat_lock();
 		part = req->part;
+		if (!part)
+			return;
+
+		cpu = part_stat_lock();
 		part_stat_add(cpu, part, sectors[rw], bytes >> 9);
 		if (req->cmd_flags & REQ_DISCARD)
 			part_stat_add(cpu, part, discard_sectors, bytes >> 9);
@@ -2244,13 +2247,16 @@ void blk_account_io_done(struct request *req)
 		struct hd_struct *part;
 		int cpu;
 
-		cpu = part_stat_lock();
 		part = req->part;
+		if (!req->part)
+			return;
 
+		cpu = part_stat_lock();
 		part_stat_inc(cpu, part, ios[rw]);
 		part_stat_add(cpu, part, ticks[rw], duration);
 		part_round_stats(cpu, part);
 		part_dec_in_flight(part, rw);
+
 		if (req->cmd_flags & REQ_DISCARD)
 			part_stat_inc(cpu, part, discard_ios);
 		if (!(req->cmd_flags & REQ_STARTED))
