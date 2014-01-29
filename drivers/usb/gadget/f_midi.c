@@ -678,7 +678,7 @@ static int f_midi_register_card(struct f_midi *midi)
 	};
 
 	err = snd_card_new(&midi->gadget->dev, midi->index, midi->id,
-			THIS_MODULE, 0, &card);
+			   THIS_MODULE, 0, &card);
 	if (err < 0) {
 		ERROR(midi, "snd_card_new() failed\n");
 		goto fail;
@@ -716,8 +716,6 @@ static int f_midi_register_card(struct f_midi *midi)
 	 */
 	snd_rawmidi_set_ops(rmidi, SNDRV_RAWMIDI_STREAM_OUTPUT, &gmidi_in_ops);
 	snd_rawmidi_set_ops(rmidi, SNDRV_RAWMIDI_STREAM_INPUT, &gmidi_out_ops);
-
-	snd_card_set_dev(card, &midi->gadget->dev);
 
 	/* register it - we're ready to go */
 	err = snd_card_register(card);
