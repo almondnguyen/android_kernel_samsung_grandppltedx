@@ -73,21 +73,21 @@ static inline u8 *usb_ext_prop_data_ptr(u8 *buf, size_t off)
 
 static inline void usb_ext_prop_put_size(u8 *buf, int dw_size)
 {
-	put_unaligned_le32(dw_size, usb_ext_prop_size_ptr(buf));
+	put_unaligned_le32(dw_size, &buf[USB_EXT_PROP_DW_SIZE]);
 }
 
 static inline void usb_ext_prop_put_type(u8 *buf, int type)
 {
-	put_unaligned_le32(type, usb_ext_prop_type_ptr(buf));
+	put_unaligned_le32(type, &buf[USB_EXT_PROP_DW_PROPERTY_DATA_TYPE]);
 }
 
 static inline int usb_ext_prop_put_name(u8 *buf, const char *name, int pnl)
 {
 	int result;
 
-	put_unaligned_le16(pnl, usb_ext_prop_name_len_ptr(buf));
+	put_unaligned_le16(pnl, &buf[USB_EXT_PROP_W_PROPERTY_NAME_LENGTH]);
 	result = utf8s_to_utf16s(name, strlen(name), UTF16_LITTLE_ENDIAN,
-		(wchar_t *) usb_ext_prop_name_ptr(buf), pnl - 2);
+		(wchar_t *) &buf[USB_EXT_PROP_B_PROPERTY_NAME], pnl - 2);
 	if (result < 0)
 		return result;
 
@@ -99,17 +99,20 @@ static inline int usb_ext_prop_put_name(u8 *buf, const char *name, int pnl)
 static inline void usb_ext_prop_put_binary(u8 *buf, int pnl, const u8 *data,
 					   int data_len)
 {
-	put_unaligned_le32(data_len, usb_ext_prop_data_len_ptr(buf, pnl));
-	memcpy(usb_ext_prop_data_ptr(buf, pnl), data, data_len);
+	put_unaligned_le32(data_len,
+			   &buf[USB_EXT_PROP_DW_PROPERTY_DATA_LENGTH + pnl]);
+	memcpy(&buf[USB_EXT_PROP_B_PROPERTY_DATA + pnl], data, data_len);
 }
 
 static inline int usb_ext_prop_put_unicode(u8 *buf, int pnl, const char *string,
 					   int data_len)
 {
 	int result;
-	put_unaligned_le32(data_len, usb_ext_prop_data_len_ptr(buf, pnl));
+	put_unaligned_le32(data_len,
+			&buf[USB_EXT_PROP_DW_PROPERTY_DATA_LENGTH + pnl]);
+
 	result = utf8s_to_utf16s(string, data_len >> 1, UTF16_LITTLE_ENDIAN,
-			(wchar_t *) usb_ext_prop_data_ptr(buf, pnl),
+			(wchar_t *) &buf[USB_EXT_PROP_B_PROPERTY_DATA + pnl],
 			data_len - 2);
 	if (result < 0)
 		return result;
