@@ -721,7 +721,7 @@ static int ashmem_pin_unpin(struct ashmem_area *asma, unsigned long cmd,
 	if (unlikely((pin.offset | pin.len) & ~PAGE_MASK))
 		return -EINVAL;
 
-	if (unlikely(((__u32) -1) - pin.offset < pin.len))
+	if (unlikely(((__u32)-1) - pin.offset < pin.len))
 		return -EINVAL;
 
 	if (unlikely(PAGE_ALIGN(asma->size) < pin.offset + pin.len))
@@ -766,7 +766,7 @@ static long ashmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		mutex_lock(&ashmem_mutex);
 		if (!asma->file) {
 			ret = 0;
-			asma->size = (size_t) arg;
+			asma->size = (size_t)arg;
 		}
 		mutex_unlock(&ashmem_mutex);
 		break;
