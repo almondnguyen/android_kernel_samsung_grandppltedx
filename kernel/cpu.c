@@ -23,7 +23,6 @@
 #include <trace/events/power.h>
 
 #include "smpboot.h"
-#include "mt_sched_mon.h"
 
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
@@ -415,9 +414,6 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	 */
 	while (!idle_cpu(cpu))
 		cpu_relax();
-#ifdef CONFIG_MT_SCHED_MONITOR
-	mt_save_irq_counts(CPU_DOWN);
-#endif
 
 	/* This actually kills the CPU. */
 	__cpu_die(cpu);
