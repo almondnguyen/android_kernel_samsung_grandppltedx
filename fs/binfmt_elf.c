@@ -38,10 +38,6 @@
 #include <asm/param.h>
 #include <asm/page.h>
 
-#ifdef CONFIG_MTK_EXTMEM
-#include <linux/exm_driver.h>
-#endif
-
 #ifndef user_long_t
 #define user_long_t long
 #endif
@@ -1132,11 +1128,6 @@ static bool always_dump_vma(struct vm_area_struct *vma)
 	if (arch_vma_name(vma))
 		return true;
 
-#ifdef CONFIG_MTK_EXTMEM
-	if (extmem_in_mspace(vma))
-		return true;
-#endif
-
 	return false;
 }
 
@@ -2184,23 +2175,6 @@ static int elf_core_dump(struct coredump_params *cprm)
 		unsigned long end;
 
 		end = vma->vm_start + vma_dump_size(vma, cprm->mm_flags);
-
-#ifdef CONFIG_MTK_EXTMEM
-		if (extmem_in_mspace(vma)) {
-			void *extmem_va = (void *)get_virt_from_mspace(vma->vm_pgoff << PAGE_SHIFT);
-
-			for (addr = vma->vm_start; addr < end; addr += PAGE_SIZE, extmem_va += PAGE_SIZE) {
-				int stop = !dump_emit(cprm, extmem_va, PAGE_SIZE);
-
-				if (stop) {
-					pr_err("[EXT_MEM]stop addr:0x%lx, extmem_va:0x%p, vm_start:0x%lx, vm_end:0x%lx\n",
-						addr, extmem_va, vma->vm_start, end);
-					goto end_coredump;
-				}
-			}
-			continue;
-		}
-#endif
 
 		for (addr = vma->vm_start; addr < end; addr += PAGE_SIZE) {
 			struct page *page;
