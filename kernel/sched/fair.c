@@ -2258,6 +2258,7 @@ static int nr_cpus_in_cluster(int cluster_id, bool exclusive_offline)
  * generic entry point for cpu mask construction, dedicated for
  * mediatek scheduler.
  */
+#ifdef CONFIG_MTK_SCHED_CMP
 static __init inline void cmp_cputopo_domain_setup(void)
 {
 	WARN(smp_processor_id() != 0, "%s is supposed runs on CPU0 while kernel init", __func__);
@@ -2278,6 +2279,7 @@ static __init inline void cmp_cputopo_domain_setup(void)
 	arch_build_cpu_topology_domain();
 #endif
 }
+#endif
 
 /*
  * We choose a half-life close to 1 scheduling period.
@@ -10397,11 +10399,15 @@ __init void init_sched_fair_class(void)
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
 	cpu_notifier(sched_ilb_notifier, 0);
 #endif
-#endif /* SMP */
-	cmp_cputopo_domain_setup();
 #ifdef CONFIG_SCHED_HMP
 	hmp_cpu_mask_setup();
 #endif
+#endif /* SMP */
+
+#ifdef CONFIG_MTK_SCHED_CMP
+	cmp_cputopo_domain_setup();
+#endif
+
 }
 
 #ifdef CONFIG_HMP_FREQUENCY_INVARIANT_SCALE
