@@ -2703,12 +2703,10 @@ unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
 #ifdef CONFIG_SCHED_HMP
 /* Schedule entity */
 #define se_load(se) se->avg.loadwop_avg_contrib
-#define se_contrib(se) se->avg.load_avg_contrib
 
 /* CPU related : load information */
 #define cfs_pending_load(cpu) cpu_rq(cpu)->cfs.avg.pending_load
 #define cfs_load(cpu) cpu_rq(cpu)->cfs.avg.loadwop_avg_contrib
-#define cfs_contrib(cpu) cpu_rq(cpu)->cfs.avg.load_avg_contrib
 
 /* CPU related : the number of tasks */
 #define cfs_nr_normal_prio(cpu) cpu_rq(cpu)->cfs.avg.nr_normal_prio
@@ -2813,19 +2811,16 @@ static inline void update_entity_load_avg(struct sched_entity *se,
 	if (se->on_rq) {
 		cfs_rq->runnable_load_avg += contrib_delta;
 		cfs_rq->utilization_load_avg += running_delta;
-		if (entity_is_task(se)) {
 #ifdef CONFIG_MTK_SCHED_CMP_TGS
-			update_tg_info(cfs_rq, se, runnable_delta);
+		update_tg_info(cfs_rq, se, runnable_delta);
 #endif
 #ifdef CONFIG_SCHED_HMP
-			cpu_rq(cpu)->cfs.avg.load_avg_contrib += contrib_delta;
-			cpu_rq(cpu)->cfs.avg.utilization_avg_contrib += running_delta;
-			cpu_rq(cpu)->cfs.avg.loadwop_avg_contrib += runnable_delta;
+		cpu_rq(cpu)->cfs.avg.utilization_avg_contrib += running_delta;
+		cpu_rq(cpu)->cfs.avg.loadwop_avg_contrib += runnable_delta;
 #ifdef CONFIG_HMP_TRACER
-			trace_sched_cfs_load_update(task_of(se), se_load(se), runnable_delta, cpu);
+		trace_sched_cfs_load_update(task_of(se), se_load(se), runnable_delta, cpu);
 #endif /* CONFIG_HMP_TRACER */
 #endif
-		}
 	} else {
 		subtract_blocked_load_contrib(cfs_rq, -contrib_delta);
 		subtract_utilization_blocked_contrib(cfs_rq,
@@ -2922,7 +2917,6 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 #endif
 	if (sched_feat(SCHED_HMP) && entity_is_task(se)) {
 #ifdef CONFIG_SCHED_HMP
-		cpu_rq(cpu)->cfs.avg.load_avg_contrib += se->avg.load_avg_contrib;
 		cpu_rq(cpu)->cfs.avg.loadwop_avg_contrib += se->avg.loadwop_avg_contrib;
 		cfs_nr_pending(cpu) = 0;
 		cfs_pending_load(cpu) = 0;
@@ -2970,7 +2964,6 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 	if (sched_feat(SCHED_HMP) && entity_is_task(se)) {
 #ifdef CONFIG_SCHED_HMP
-		cpu_rq(cpu)->cfs.avg.load_avg_contrib -= se->avg.load_avg_contrib;
 		cpu_rq(cpu)->cfs.avg.utilization_avg_contrib -= se->avg.utilization_avg_contrib;
 		cpu_rq(cpu)->cfs.avg.loadwop_avg_contrib -= se->avg.loadwop_avg_contrib;
 #ifdef CONFIG_SCHED_HMP_PRIO_FILTER
