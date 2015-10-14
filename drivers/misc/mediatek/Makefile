@@ -117,7 +117,6 @@ obj-$(CONFIG_MTK_DEBUG_LATCH)	+= debug_latch/
 obj-$(CONFIG_MTK_WATCHPOINT) += watchpoint/
 obj-$(CONFIG_MTK_SYSTRACKER)   += systracker/
 obj-$(CONFIG_MTK_RAM_CONSOLE)	+= ram_console/
-obj-$(CONFIG_MTK_EXTMEM) += exm/
 
 obj-y += performance/
 
