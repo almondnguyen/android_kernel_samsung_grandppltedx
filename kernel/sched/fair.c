@@ -8098,7 +8098,6 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 
 #ifdef CONFIG_MT_LOAD_BALANCE_ENHANCEMENT
 	if ((env->idle == CPU_IDLE) || (env->idle == CPU_NEWLY_IDLE)) {
-		int i = (env->idle == CPU_IDLE) ? 1:0;
 #else
 	if (env->idle == CPU_IDLE) {
 #endif
@@ -8109,18 +8108,9 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 		 * significant if the diff is greater than 1 otherwise we
 		 * might end up to just move the imbalance on another group
 		 */
-#ifdef CONFIG_MT_LOAD_BALANCE_ENHANCEMENT
 		if ((busiest->group_type != group_overloaded) &&
-				(local->idle_cpus < (busiest->idle_cpus + i))) {
-#else
-		if ((busiest->group_type != group_overloaded) &&
-				(local->idle_cpus <= (busiest->idle_cpus + 1))) {
-#endif
-
-			mt_sched_printf(sched_lb, "[%s] fail b_type=%d s_idles=%d b_idles=%d",
-				__func__, busiest->group_type, local->idle_cpus, busiest->idle_cpus);
+				(local->idle_cpus <= (busiest->idle_cpus + 1)))
 			goto out_balanced;
-		}
 	} else {
 		/*
 		 * In the CPU_NEWLY_IDLE, CPU_NOT_IDLE cases, use
