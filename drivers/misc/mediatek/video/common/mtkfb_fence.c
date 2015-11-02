@@ -352,22 +352,6 @@ static size_t mtkfb_ion_phys_mmu_addr(struct ion_client *client, struct ion_hand
 	return size;
 }
 
-static void mtkfb_ion_cache_flush(struct ion_client *client, struct ion_handle *handle)
-{
-	struct ion_sys_data sys_data;
-
-	if (!ion_client || !handle)
-		return;
-
-	sys_data.sys_cmd = ION_SYS_CACHE_SYNC;
-	sys_data.cache_sync_param.kernel_handle = handle;
-	sys_data.cache_sync_param.sync_type = ION_CACHE_FLUSH_ALL;
-
-	if (ion_kernel_ioctl(client, ION_CMD_SYSTEM, (unsigned long)&sys_data))
-		MTKFB_FENCE_ERR("ion cache flush failed!\n");
-
-}
-
 unsigned int mtkfb_query_buf_mva(unsigned int session_id, unsigned int layer_id, unsigned int idx)
 {
 	struct mtkfb_fence_buf_info *buf;
@@ -392,14 +376,6 @@ unsigned int mtkfb_query_buf_mva(unsigned int session_id, unsigned int layer_id,
 	mutex_unlock(&layer_info->sync_lock);
 	if (mva != 0x0) {
 		buf->ts_create = sched_clock();
-		if (buf->cache_sync) {
-			/* xuecheng, for debug */
-			/* DISPMSG("attention!! we will do ion_cache_flush!!!\n"); */
-
-			dprec_logger_start(DPREC_LOGGER_DISPMGR_CACHE_SYNC, (unsigned long)buf->hnd, buf->mva);
-			mtkfb_ion_cache_flush(ion_client, buf->hnd);
-			dprec_logger_done(DPREC_LOGGER_DISPMGR_CACHE_SYNC, (unsigned long)buf->hnd, buf->mva);
-		}
 		MTKFB_FENCE_LOG("query buf mva: layer=%d, idx=%d, mva=0x%08x\n", layer_id, idx,
 				(unsigned int)(buf->mva));
 	} else {
@@ -732,7 +708,6 @@ struct mtkfb_fence_buf_info *mtkfb_init_buf_info(struct mtkfb_fence_buf_info *bu
 	buf->hnd = NULL;
 	buf->idx = 0;
 	buf->mva = 0;
-	buf->cache_sync = 0;
 #ifdef CONFIG_MTK_HDMI_3D_SUPPORT
 	buf->layer_type = 0;
 #endif
@@ -1124,7 +1099,6 @@ struct mtkfb_fence_buf_info *disp_sync_prepare_buf(disp_buffer_info *buf)
 	buf_info->mva_offset = 0;
 	buf_info->trigger_ticket = 0;
 	buf_info->buf_state = create;
-	buf_info->cache_sync = buf->cache_sync;
 	mutex_lock(&layer_info->sync_lock);
 	list_add_tail(&buf_info->list, &layer_info->buf_list);
 	mutex_unlock(&layer_info->sync_lock);
@@ -1236,11 +1210,6 @@ unsigned int disp_sync_query_buf_info(unsigned int session_id, unsigned int time
 		*mva = dst_mva;
 		*size = dst_size;
 		buf->ts_create = sched_clock();
-		if (buf->cache_sync) {
-			dprec_logger_start(DPREC_LOGGER_DISPMGR_CACHE_SYNC, (unsigned long)buf->hnd, buf->mva);
-			mtkfb_ion_cache_flush(ion_client, buf->hnd);
-			dprec_logger_done(DPREC_LOGGER_DISPMGR_CACHE_SYNC, (unsigned long)buf->hnd, buf->mva);
-		}
 		MTKFB_FENCE_LOG("query buf mva: layer=%d, idx=%d, mva=0x%lx\n", timeline_id, idx,
 				buf->mva);
 	} else {
