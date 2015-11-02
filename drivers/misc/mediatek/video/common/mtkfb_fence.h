@@ -59,7 +59,6 @@ struct mtkfb_fence_buf_info {
 	unsigned int size;
 	unsigned int mva_offset;
 	BUFFER_STATE buf_state;
-	unsigned int cache_sync;
 	unsigned int set_input_ticket;
 	unsigned int trigger_ticket;	/* we can't update trigger_ticket_end,
 					   because can't gurantee ticket being updated before cmdq callback

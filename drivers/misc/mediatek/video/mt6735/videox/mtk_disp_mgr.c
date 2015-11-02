@@ -660,13 +660,12 @@ int _ioctl_prepare_buffer(unsigned long arg, ePREPARE_FENCE_TYPE type)
 			info.fence_fd = buf->fence;
 			info.index = buf->idx;
 		} else {
-			DISPPR_ERROR("prepare fence failed, 0x%08x/l%d/e%d/ion%d/cache%d\n",
-				     info.session_id, info.layer_id, info.layer_en, info.ion_fd,
-				     info.cache_sync);
-			DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/c%d/id%d/ffd%d\n",
+			DISPPR_ERROR("prepare fence failed, 0x%08x/l%d/e%d/ion%d\n",
+				     info.session_id, info.layer_id, info.layer_en, info.ion_fd);
+			DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/id%d/ffd%d\n",
 				     disp_session_mode_spy(info.session_id),
 				     DISP_SESSION_DEV(info.session_id), info.layer_id,
-				     info.layer_en, info.ion_fd, info.cache_sync, info.index,
+				     info.layer_en, info.ion_fd, info.index,
 				     info.fence_fd);
 			info.fence_fd = MTK_FB_INVALID_FENCE_FD; /* invalid fd */
 			info.index = 0;
@@ -681,14 +680,14 @@ int _ioctl_prepare_buffer(unsigned long arg, ePREPARE_FENCE_TYPE type)
 					info.interface_fence_fd = buf2->fence;
 					info.interface_index = buf2->idx;
 				} else {
-					DISPPR_ERROR("prepare fence failed, 0x%08x/l%d/e%d/ion%d/cache%d\n",
+					DISPPR_ERROR("prepare fence failed, 0x%08x/l%d/e%d/ion%d\n",
 						     info.session_id, info.layer_id, info.layer_en,
-						     info.ion_fd, info.cache_sync);
-					DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/c%d/id%d/ffd%d\n",
+						     info.ion_fd);
+					DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/id%d/ffd%d\n",
 						     disp_session_mode_spy(info.session_id),
 						     DISP_SESSION_DEV(info.session_id),
 						     info.layer_id, info.layer_en, info.ion_fd,
-						     info.cache_sync, info.index, info.fence_fd);
+						     info.index, info.fence_fd);
 					info.interface_fence_fd = MTK_FB_INVALID_FENCE_FD; /* invalid fd */
 					info.interface_index = 0;
 				}
@@ -698,12 +697,12 @@ int _ioctl_prepare_buffer(unsigned long arg, ePREPARE_FENCE_TYPE type)
 			}
 		}
 	} else {
-		DISPPR_ERROR("wrong prepare param, 0x%08x/l%d/e%d/ion%d/cache%d\n", info.session_id,
-			     info.layer_id, info.layer_en, info.ion_fd, info.cache_sync);
-		DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/c%d/id%d/ffd%d\n",
+		DISPPR_ERROR("wrong prepare param, 0x%08x/l%d/e%d/ion%d\n", info.session_id,
+			     info.layer_id, info.layer_en, info.ion_fd);
+		DISPPR_FENCE("P+ FAIL /%s%d/l%d/e%d/ion%d/id%d/ffd%d\n",
 			     disp_session_mode_spy(info.session_id),
 			     DISP_SESSION_DEV(info.session_id), info.layer_id, info.layer_en,
-			     info.ion_fd, info.cache_sync, info.index, info.fence_fd);
+			     info.ion_fd, info.index, info.fence_fd);
 		info.fence_fd = MTK_FB_INVALID_FENCE_FD;	/* invalid fd */
 		info.index = 0;
 	}
