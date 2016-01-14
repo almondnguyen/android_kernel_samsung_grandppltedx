@@ -49,7 +49,7 @@ static void zcomp_strm_free(struct zcomp_strm *zstrm)
  */
 static struct zcomp_strm *zcomp_strm_alloc(struct zcomp *comp)
 {
-	struct zcomp_strm *zstrm = kmalloc(sizeof(*zstrm), GFP_KERNEL);
+	struct zcomp_strm *zstrm = kmalloc(sizeof(*zstrm), GFP_NOIO);
 	if (!zstrm)
 		return NULL;
 
