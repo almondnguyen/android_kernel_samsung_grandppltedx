@@ -18,9 +18,11 @@
  *
  *  v1.6 - remove autosleep and hybrid modes (autosleep not working on shamu)
  *
+ *  v1.6.1 - Add autosleep and hybrid modes back
+ *
  *  v1.7 - do only run state change if change actually requests a new state
  *
- * v1.7.1 - Add autosleep and hybrid modes back
+ *  v1.7.1 - replaced deprecated singlethread workqueue with updated schedule_work
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -156,15 +158,15 @@ void set_power_suspend_state(int new_state)
 			pr_info("[POWERSUSPEND] state activated.\n");
 			#endif
 			state = new_state;
-		power_suspended = true;
-			queue_work(suspend_work_queue, &power_suspend_work);
+			power_suspended = true;
+			schedule_work(&power_suspend_work);
 		} else if (state == POWER_SUSPEND_ACTIVE && new_state == POWER_SUSPEND_INACTIVE) {
 			#ifdef CONFIG_POWERSUSPEND_DEBUG
 			pr_info("[POWERSUSPEND] state deactivated.\n");
 			#endif
 			state = new_state;
-		power_suspended = false;
-			queue_work(suspend_work_queue, &power_resume_work);
+			power_suspended = false;
+			schedule_work(&power_resume_work);
 		}
 		spin_unlock_irqrestore(&state_lock, irqflags);		
 	#ifdef CONFIG_POWERSUSPEND_DEBUG
@@ -293,26 +295,21 @@ static int __init power_suspend_init(void)
 
 	int sysfs_result;
 
-        power_suspend_kobj = kobject_create_and_add("power_suspend",
-				kernel_kobj);
-        if (!power_suspend_kobj) {
-                pr_err("%s kobject create failed!\n", __FUNCTION__);
-                return -ENOMEM;
-        }
+	power_suspend_kobj = kobject_create_and_add("power_suspend",
+		kernel_kobj);
 
-        sysfs_result = sysfs_create_group(power_suspend_kobj,
-			&power_suspend_attr_group);
+	if (!power_suspend_kobj) {
+		pr_err("%s kobject create failed!\n", __FUNCTION__);
+	return -ENOMEM;
+	}
 
-        if (sysfs_result) {
-                pr_info("%s group create failed!\n", __FUNCTION__);
-                kobject_put(power_suspend_kobj);
-                return -ENOMEM;
-        }
+	sysfs_result = sysfs_create_group(power_suspend_kobj,
+		&power_suspend_attr_group);
 
-	suspend_work_queue = create_singlethread_workqueue("p-suspend");
-
-	if (suspend_work_queue == NULL) {
-		return -ENOMEM;
+	if (sysfs_result) {
+		pr_info("%s group create failed!\n", __FUNCTION__);
+		kobject_put(power_suspend_kobj);
+	return -ENOMEM;
 	}
 
 //	mode = POWER_SUSPEND_USERSPACE;	// Yank555.lu : Default to userspace mode
@@ -325,8 +322,6 @@ static void __exit power_suspend_exit(void)
 {
 	if (power_suspend_kobj != NULL)
 		kobject_put(power_suspend_kobj);
-
-	destroy_workqueue(suspend_work_queue);
 } 
 
 core_initcall(power_suspend_init);
