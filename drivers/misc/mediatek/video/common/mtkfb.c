@@ -33,7 +33,7 @@
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
 #include <linux/io.h>
-
+#include <linux/display_state.h>
 #include <linux/compat.h>
 #include <linux/dma-mapping.h>
 
@@ -78,6 +78,11 @@
 
 #define ALIGN_TO(x, n)	(((x) + ((n) - 1)) & ~((n) - 1))
 
+bool display_on = true;
+bool is_display_on()
+{
+	return display_on;
+}
 
 /* xuecheng, remove this because we use session now */
 /* mtk_dispif_info_t dispif_info[MTKFB_MAX_DISPLAY_COUNT]; */
@@ -1508,6 +1513,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 	case FB_BLANK_NORMAL:
+		display_on = true;
 		mtkfb_blank_resume();
 		if (!lcd_fps)
 			msleep(30);
@@ -1518,6 +1524,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 	case FB_BLANK_HSYNC_SUSPEND:
 		break;
 	case FB_BLANK_POWERDOWN:
+		display_on = false;
 		mtkfb_blank_suspend();
 		break;
 	default:
