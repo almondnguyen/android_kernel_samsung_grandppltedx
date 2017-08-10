@@ -232,6 +232,14 @@ config LZ4K
 	bool "LZ4K compression"
 	default n
 
+config ZSTD_COMPRESS
+	select XXHASH
+	tristate
+
+config ZSTD_DECOMPRESS
+	select XXHASH
+	tristate
+
 source "lib/xz/Kconfig"
 
 #
