@@ -10,6 +10,8 @@
 *
 * You should have received a copy of the GNU General Public License along with this program.
 * If not, see <http://www.gnu.org/licenses/>.
+*
+* 2017/12/24 - version 2.0	daniel_hk (https://github.com/danielhk)
 */
 
 #include <linux/init.h>
@@ -30,6 +32,7 @@
 #include <linux/device.h>
 #endif
 #include <linux/printk.h>
+#include <linux/uio.h>
 
 #include "osal_typedef.h"
 #include "stp_exp.h"
@@ -47,7 +50,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define BT_LOG_ERR                  0
 
 #define COMBO_IOC_MAGIC             0xb0
-#define COMBO_IOCTL_FW_ASSERT       _IOW(COMBO_IOC_MAGIC, 0, int)
+#define COMBO_IOCTL_FW_ASSERT       _IOWR(COMBO_IOC_MAGIC, 0, int)
 #define COMBO_IOCTL_BT_IC_HW_VER    _IOWR(COMBO_IOC_MAGIC, 1, void*)
 #define COMBO_IOCTL_BT_IC_FW_VER    _IOWR(COMBO_IOC_MAGIC, 2, void*)
 #define COMBO_IOC_BT_HWVER          _IOWR(COMBO_IOC_MAGIC, 3, void*)
@@ -60,18 +63,18 @@ static UINT32 gDbgLevel = BT_LOG_INFO;
 	} while (0)
 #define BT_INFO_FUNC(fmt, arg...)	\
 	do { if (gDbgLevel >= BT_LOG_INFO)	\
-		pr_warn(PFX "%s: "  fmt, __func__ , ##arg);	\
+		pr_info(PFX "%s: "  fmt, __func__ , ##arg);	\
 	} while (0)
 #define BT_WARN_FUNC(fmt, arg...)	\
 	do { if (gDbgLevel >= BT_LOG_WARN)	\
-		pr_err(PFX "%s: "  fmt, __func__ , ##arg);	\
+		pr_warn(PFX "%s: "  fmt, __func__ , ##arg);	\
 	} while (0)
 #define BT_ERR_FUNC(fmt, arg...)	\
 	do { if (gDbgLevel >= BT_LOG_ERR)	\
 		pr_err(PFX "%s: "   fmt, __func__ , ##arg);	\
 	} while (0)
 
-#define VERSION "1.0"
+#define VERSION "2.0"
 
 
 #if WMT_CREATE_NODE_DYNAMIC
@@ -93,7 +96,7 @@ static struct wake_lock bt_wakelock;
 /* Wait queue for poll and read */
 static wait_queue_head_t inq;
 static DECLARE_WAIT_QUEUE_HEAD(BT_wq);
-static INT32 flag;
+static INT32 flag = 0;
 /*
  * Reset flag for whole chip reset scenario, to indicate reset status:
  *   0 - normal, no whole chip reset occurs
@@ -101,8 +104,24 @@ static INT32 flag;
  *   2 - reset end, have not sent Hardware Error event yet
  *   3 - reset end, already sent Hardware Error event
  */
-static volatile UINT32 rstflag;
+static UINT32 rstflag;
 static UINT8 HCI_EVT_HW_ERROR[] = {0x04, 0x10, 0x01, 0x00};
+static loff_t rd_offset;
+
+static size_t bt_report_hw_error(char *buf, size_t count, loff_t *f_pos)
+{
+	size_t bytes_rest, bytes_read;
+
+	if (*f_pos == 0)
+		BT_INFO_FUNC("Send Hardware Error event to stack to restart Bluetooth\n");
+
+	bytes_rest = sizeof(HCI_EVT_HW_ERROR) - *f_pos;
+	bytes_read = count < bytes_rest ? count : bytes_rest;
+	memcpy(buf, HCI_EVT_HW_ERROR + *f_pos, bytes_read);
+	*f_pos += bytes_read;
+
+	return bytes_read;
+}
 
 /*******************************************************************
  * WHOLE CHIP RESET message handler
@@ -114,35 +133,37 @@ static VOID bt_cdev_rst_cb(ENUM_WMTDRV_TYPE_T src,
 	ENUM_WMTRSTMSG_TYPE_T rst_msg;
 
 	if (sz > sizeof(ENUM_WMTRSTMSG_TYPE_T)) {
-		BT_WARN_FUNC("Invalid message format!\n");
-		return;
-	}
+		memcpy((PINT8)&rst_msg, (PINT8)buf, sz);
+		BT_DBG_FUNC("src = %d, dst = %d, type = %d, buf = 0x%x sz = %d, max = %d\n",
+			     src, dst, type, rst_msg, sz, WMTRSTMSG_RESET_MAX);
+		if ((src == WMTDRV_TYPE_WMT) && (dst == WMTDRV_TYPE_BT)
+		    && (type == WMTMSG_TYPE_RESET)) {
+			switch (rst_msg) {
+			case WMTRSTMSG_RESET_START:
+				BT_INFO_FUNC("Whole chip reset start!\n");
+				rstflag = 1;
+				break;
 
-	memcpy((PINT8)&rst_msg, (PINT8)buf, sz);
-	BT_DBG_FUNC("src = %d, dst = %d, type = %d, buf = 0x%x sz = %d, max = %d\n",
-		    src, dst, type, rst_msg, sz, WMTRSTMSG_RESET_MAX);
-	if ((src == WMTDRV_TYPE_WMT) && (dst == WMTDRV_TYPE_BT) && (type == WMTMSG_TYPE_RESET)) {
-		switch (rst_msg) {
-		case WMTRSTMSG_RESET_START:
-			BT_INFO_FUNC("Whole chip reset start!\n");
-			rstflag = 1;
-			break;
+			case WMTRSTMSG_RESET_END:
+			case WMTRSTMSG_RESET_END_FAIL:
+				if (rst_msg == WMTRSTMSG_RESET_END)
+					BT_INFO_FUNC("Whole chip reset end!\n");
+				else
+					BT_INFO_FUNC("Whole chip reset fail!\n");
+				rd_offset = 0;
+				rstflag = 2;
+				flag = 1;
+				wake_up_interruptible(&inq);
+				wake_up(&BT_wq);
+				break;
 
-		case WMTRSTMSG_RESET_END:
-		case WMTRSTMSG_RESET_END_FAIL:
-			if (rst_msg == WMTRSTMSG_RESET_END)
-				BT_INFO_FUNC("Whole chip reset end!\n");
-			else
-				BT_INFO_FUNC("Whole chip reset fail!\n");
-			rstflag = 2;
-			flag = 1;
-			wake_up_interruptible(&inq);
-			wake_up(&BT_wq);
-			break;
-
-		default:
-			break;
+			default:
+				break;
+			}
 		}
+	} else {
+		/* Invalid message format */
+		BT_WARN_FUNC("Invalid message format!\n");
 	}
 }
 
@@ -218,8 +239,9 @@ ssize_t BT_write(struct file *filp, const char __user *buf, size_t count, loff_t
 
 	if (count > 0) {
 		if (count > BT_BUFFER_SIZE) {
-			count = BT_BUFFER_SIZE;
-			BT_WARN_FUNC("Shorten write count from %zd to %d\n", count, BT_BUFFER_SIZE);
+			BT_ERR_FUNC("write count %zd exceeds max buffer size %d", count, BT_BUFFER_SIZE);
+			retval = -EINVAL;
+			goto OUT;
 		}
 
 		if (copy_from_user(o_buf, buf, count)) {
@@ -277,14 +299,16 @@ ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos
 		 * To avoid high frequency read from stack before process is killed, set rstflag to 3
 		 * to block poll and read after Hardware Error event is sent.
 		 */
-		BT_INFO_FUNC("Send Hardware Error event to stack to restart Bluetooth\n");
-		memcpy(i_buf, HCI_EVT_HW_ERROR, sizeof(HCI_EVT_HW_ERROR));
-		retval = sizeof(HCI_EVT_HW_ERROR);
-		rstflag = 3;
+		retval = bt_report_hw_error(i_buf, count, &rd_offset);
+		if (rd_offset == sizeof(HCI_EVT_HW_ERROR)) {
+			rd_offset = 0;
+			rstflag = 3;
+		}
 
 		if (copy_to_user(buf, i_buf, retval)) {
 			retval = -EFAULT;
-			rstflag = 2;
+			if (rstflag == 3)
+				rstflag = 2;
 		}
 
 		goto OUT;
@@ -325,22 +349,78 @@ ssize_t BT_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos
 			retval = -EIO;
 			goto OUT;
 		} else {	/* Reset end, send Hardware Error event only once */
-			BT_INFO_FUNC("Send Hardware Error event to stack to restart Bluetooth\n");
-			memcpy(i_buf, HCI_EVT_HW_ERROR, sizeof(HCI_EVT_HW_ERROR));
-			retval = sizeof(HCI_EVT_HW_ERROR);
-			rstflag = 3;
+			retval = bt_report_hw_error(i_buf, count, &rd_offset);
+			if (rd_offset == sizeof(HCI_EVT_HW_ERROR)) {
+				rd_offset = 0;
+				rstflag = 3;
+			}
 		}
 	}
 
+	/* Got something from STP driver */
 	if (copy_to_user(buf, i_buf, retval)) {
 		retval = -EFAULT;
 		if (rstflag == 3)
 			rstflag = 2;
-		goto OUT;
 	}
 
 OUT:
 	up(&rd_mtx);
+	BT_DBG_FUNC("%s: retval = %d\n", __func__, retval);
+	return retval;
+}
+
+ssize_t BT_aio_write(struct kiocb *iocb, const struct iovec *iov, unsigned long nr_segs, loff_t f_pos)
+{
+	INT32 retval = 0;
+	size_t count = iov_length(iov, nr_segs);
+
+	down(&wr_mtx);
+
+	BT_DBG_FUNC("%s: count %zd pos %lld\n", __func__, count, f_pos);
+
+	if (rstflag) {
+		BT_ERR_FUNC("whole chip reset occurs! rstflag=%d\n", rstflag);
+		retval = -EIO;
+		goto OUT;
+	}
+
+	if (count > 0) {
+		unsigned long seg = nr_segs;
+		size_t ofs = 0;
+		if (count > BT_BUFFER_SIZE) {
+			BT_ERR_FUNC("write count %zd exceeds max buffer size %d", count, BT_BUFFER_SIZE);
+			retval = -EINVAL;
+			goto OUT;
+		}
+
+		while (seg > 0) {
+			if (copy_from_user(&o_buf[ofs], iov->iov_base, iov->iov_len)) {
+				retval = -EFAULT;
+				goto OUT;
+			}
+			ofs += iov->iov_len;
+			iov++;
+			seg--;
+		}
+
+		BT_DBG_FUNC("%s: before mtk_wcn_stp_send_data ofs %zd\n", __func__, ofs);
+		retval = mtk_wcn_stp_send_data(o_buf, count, BT_TASK_INDX);
+
+		if (retval < 0)
+			BT_ERR_FUNC("mtk_wcn_stp_send_data fail, retval %d\n", retval);
+		else if (retval == 0) {
+			/* Device cannot process data in time, STP queue is full and no space is available for write,
+			 * native program should not call write with no delay.
+			 */
+			BT_ERR_FUNC("write count %zd, sent bytes %d, no space is available!\n", count, retval);
+			retval = -EAGAIN;
+		} else
+			BT_DBG_FUNC("write count %zd, sent bytes %d\n", count, retval);
+	}
+
+OUT:
+	up(&wr_mtx);
 	return retval;
 }
 
@@ -421,13 +501,14 @@ static int BT_open(struct inode *inode, struct file *file)
 	BT_INFO_FUNC("Now it's in MTK Bluetooth Mode\n");
 	BT_INFO_FUNC("STP is ready!\n");
 
-	wake_lock_init(&bt_wakelock, WAKE_LOCK_SUSPEND, "bt_drv");
-
 	BT_DBG_FUNC("Register BT event callback!\n");
-	mtk_wcn_stp_register_event_cb(BT_TASK_INDX, BT_event_cb);
+	int ret = mtk_wcn_stp_register_event_cb(BT_TASK_INDX, BT_event_cb);
+	BT_DBG_FUNC("Register BT event callback ret=%d\n",ret);
 
 	BT_DBG_FUNC("Register BT reset callback!\n");
-	mtk_wcn_wmt_msgcb_reg(WMTDRV_TYPE_BT, bt_cdev_rst_cb);
+	ret = mtk_wcn_wmt_msgcb_reg(WMTDRV_TYPE_BT, bt_cdev_rst_cb);
+	BT_DBG_FUNC("Register BT reset callback ret=%d\n",ret);
+
 	rstflag = 0;
 
 	sema_init(&wr_mtx, 1);
@@ -444,8 +525,6 @@ static int BT_close(struct inode *inode, struct file *file)
 	mtk_wcn_wmt_msgcb_unreg(WMTDRV_TYPE_BT);
 	mtk_wcn_stp_register_event_cb(BT_TASK_INDX, NULL);
 
-	wake_lock_destroy(&bt_wakelock);
-
 	if (MTK_WCN_BOOL_FALSE == mtk_wcn_wmt_func_off(WMTDRV_TYPE_BT)) {
 		BT_ERR_FUNC("WMT turn off BT fail!\n");
 		return -EIO;	/* Mostly, native program will not check this return value. */
@@ -460,6 +539,7 @@ const struct file_operations BT_fops = {
 	.release = BT_close,
 	.read = BT_read,
 	.write = BT_write,
+	.aio_write = BT_aio_write,
 /* .ioctl = BT_ioctl, */
 	.unlocked_ioctl = BT_unlocked_ioctl,
 	.compat_ioctl = BT_compat_ioctl,
@@ -473,7 +553,7 @@ static int BT_init(void)
 	INT32 cdev_err = 0;
 
 	/* Static allocate char device */
-	alloc_ret = register_chrdev_region(dev, 1, BT_DRIVER_NAME);
+	alloc_ret = register_chrdev_region(dev, BT_devs, BT_DRIVER_NAME);
 	if (alloc_ret) {
 		BT_ERR_FUNC("%s: Failed to register char device\n", __func__);
 		return alloc_ret;
@@ -499,14 +579,18 @@ static int BT_init(void)
 
 	/* Init wait queue */
 	init_waitqueue_head(&(inq));
+	/* Initialize wake lock */
+	wake_lock_init(&bt_wakelock, WAKE_LOCK_SUSPEND, "bt_drv");
 
 	return 0;
 
 error:
 #if WMT_CREATE_NODE_DYNAMIC
-	if (!IS_ERR(stpbt_dev))
+	if (stpbt_dev && !IS_ERR(stpbt_dev)) {
 		device_destroy(stpbt_class, dev);
-	if (!IS_ERR(stpbt_class)) {
+		stpbt_dev = NULL;
+	}
+	if (stpbt_class && !IS_ERR(stpbt_class)) {
 		class_destroy(stpbt_class);
 		stpbt_class = NULL;
 	}
@@ -523,13 +607,15 @@ error:
 static void BT_exit(void)
 {
 	dev_t dev = MKDEV(BT_major, 0);
+	/* Destroy wake lock*/
+	wake_lock_destroy(&bt_wakelock);
 
 #if WMT_CREATE_NODE_DYNAMIC
-	if (stpbt_dev) {
+	if (stpbt_dev && !IS_ERR(stpbt_dev)) {
 		device_destroy(stpbt_class, dev);
 		stpbt_dev = NULL;
 	}
-	if (stpbt_class) {
+	if (stpbt_class && !IS_ERR(stpbt_class)) {
 		class_destroy(stpbt_class);
 		stpbt_class = NULL;
 	}
