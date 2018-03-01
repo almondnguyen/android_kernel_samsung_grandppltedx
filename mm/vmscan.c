@@ -58,6 +58,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
 
+int max_swappiness = 200;
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -2028,7 +2030,7 @@ static void get_scan_count(struct lruvec *lruvec, int swappiness,
 	 * This scanning priority is essentially the inverse of IO cost.
 	 */
 	anon_prio = swappiness;
-	file_prio = 200 - anon_prio;
+	file_prio = max_swappiness - anon_prio;
 
 	/*
 	 * OK, so we have swap space and a fair amount of page cache
