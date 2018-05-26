@@ -83,7 +83,7 @@ static uint8_t lmk_log_buf[LMK_LOG_BUF_SIZE];
 static uint32_t enable_candidate_log;
 #endif
 static DEFINE_SPINLOCK(lowmem_shrink_lock);
-static uint32_t lowmem_debug_level = 1;
+static uint32_t lowmem_debug_level = 0;
 static short lowmem_adj[9] = {
 	0,
 	1,
