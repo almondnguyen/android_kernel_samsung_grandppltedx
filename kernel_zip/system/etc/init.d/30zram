@@ -10,8 +10,8 @@ fi
 # Set page-cluster to lowest to maximize performance
 echo 0 > /proc/sys/vm/page-cluster;
 
-# How many CPU cores do we have?
-num_cpu=$(($(cat /sys/devices/system/cpu/kernel_max) + 1))
+# How many CPU cores do we have? (get fixed numer of one for now)
+num_cpu=1 # $(($(cat /sys/devices/system/cpu/kernel_max) + 1))
 
 # Remove all zRAMs first
 for i in $(busybox seq ${num_cpu}); do
