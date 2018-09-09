@@ -49,7 +49,11 @@
 /*
  * debug = 1 will print all
  */
+#ifdef CONFIG_POWERSUSPEND_DEBUG
 static unsigned int debug = 2;
+#else
+static unsigned int debug = 0;
+#endif
 module_param_named(debug_mask, debug, uint, 0644);
  #define dprintk(msg...)		\
 do { 				\
