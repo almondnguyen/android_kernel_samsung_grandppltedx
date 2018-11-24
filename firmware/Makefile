@@ -12,7 +12,7 @@ fw-external-y := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE))
 # There are three cases to care about:
 # 1. Building kernel with CONFIG_FIRMWARE_IN_KERNEL=y -- $(fw-shipped-y) should
 #    include the firmware files to include, according to .config
-# 2. 'make modules_install', which will install firmware for modules, and 
+# 2. 'make modules_install', which will install firmware for modules, and
 #    _also_ for the in-kernel drivers when CONFIG_FIRMWARE_IN_KERNEL=n
 # 3. 'make firmware_install', which installs all firmware, unconditionally.
 
@@ -26,6 +26,46 @@ fw-shipped- += acenic/tg1.bin
 else
 acenic-objs := acenic/tg1.bin acenic/tg2.bin
 endif
+
+ifdef CONFIG_TOUCHSCREEN_UNIFIED_DRIVER_4
+ifdef CONFIG_TOUCHSCREEN_LGE_MIT300
+mit300_fw_file := melfas/mit300/mm1v/L0M50P1_00_01.bin
+endif
+ifdef CONFIG_TOUCHSCREEN_LGE_MIT300_M4
+mit300_fw_file := melfas/mit300/m4/L0M50P1_00_01.bin
+endif
+mit300_firmware := $(subst $(srctree)/firmware/,,$(mit300_fw_file))
+#fw-shipped-$(CONFIG_TOUCHSCREEN_UNIFIED_DRIVER_4) += $(mit300_firmware)
+fw-shipped-y += $(mit300_firmware)
+ifdef CONFIG_TOUCHSCREEN_LGE_FT8707
+focaltech_img_file1 := focaltech/K7/FT8707/FT8707_Pramboot_V0.2_20151215_Final.bin
+focaltech_img_file2 := focaltech/K7/FT8707/LGE_K7_FT8707_0x96_V0x08_D0x01_20151229_all.bin
+focaltech_firmware1 := $(subst $(srctree)/firmware/,,$(focaltech_img_file1))
+focaltech_firmware2 := $(subst $(srctree)/firmware/,,$(focaltech_img_file2))
+fw-shipped-y += $(focaltech_firmware1)
+fw-shipped-y += $(focaltech_firmware2)
+endif
+endif
+
+ifdef CONFIG_LGE_TOUCH_LG4894
+lg4894_fw_file := $(wildcard $(srctree)/firmware/sic/lg4894/k6p/*)
+lg4894_firmware := $(subst $(srctree)/firmware/,,$(lg4894_fw_file))
+fw-shipped-$(CONFIG_LGE_TOUCH_LG4894) += $(lg4894_firmware)
+fw-shipped-y += $(lg4894_firmware)
+endif
+
+ifdef CONFIG_TOUCHSCREEN_LGE_TD4191
+synaptics_img_file := $(wildcard $(srctree)/firmware/synaptics/k6m/*.img)
+synaptics_img_file += $(wildcard $(srctree)/firmware/synaptics/k6m/*.bin)
+synaptics_img_file += $(wildcard $(srctree)/firmware/synaptics/k6m/*.txt)
+synaptics_firmware := $(subst $(srctree)/firmware/,,$(synaptics_img_file))
+fw-shipped-$(CONFIG_TOUCHSCREEN_UNIFIED_DRIVER_4) += $(synaptics_firmware)
+endif
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS438)		+= tsp_melfas/mms438_j7x.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_BT541)		+= tsp_zinitix/bt541_GP.fw
+fw-shipped-$(CONFIG_GRIP_TC305K)				+= coreriver/tc305k_GP.fw
+
 fw-shipped-$(CONFIG_ACENIC) += $(acenic-objs)
 fw-shipped-$(CONFIG_ADAPTEC_STARFIRE) += adaptec/starfire_rx.bin \
 					 adaptec/starfire_tx.bin
@@ -138,8 +178,17 @@ fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
+# Directories which we _might_ need to create, so we have a rule for them.
+firmware-dirs := $(sort $(addprefix $(objtree)/$(obj)/,$(dir $(fw-external-y) $(fw-shipped-all))))
+
+quiet_cmd_mkdir = MKDIR   $(patsubst $(objtree)/%,%,$@)
+      cmd_mkdir = mkdir -p $@
+
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
+
+quiet_cmd_copy  = COPY    $@
+      cmd_copy  = cp $(srctree)/$@ $@
 
 quiet_cmd_ihex2fw  = IHEX2FW $@
       cmd_ihex2fw  = $(objtree)/$(obj)/ihex2fw $< $@
@@ -178,10 +227,21 @@ wordsize_deps := $(wildcard include/config/64bit.h include/config/32bit.h \
 		include/config/superh32.h include/config/superh64.h \
 		include/config/x86_32.h include/config/x86_64.h)
 
-$(patsubst %,$(obj)/%.gen.S, $(fw-shipped-y)): %: $(wordsize_deps)
+# Workaround for make < 3.81, where .SECONDEXPANSION doesn't work.
+# It'll end up depending on these targets, so make them a PHONY rule which
+# depends on _all_ the directories in $(firmware-dirs), and it'll work out OK.
+PHONY += $(objtree)/$$(%) $(objtree)/$(obj)/$$(%)
+$(objtree)/$$(%) $(objtree)/$(obj)/$$(%): $(firmware-dirs)
+	@true
+
+# For the $$(dir %) trick, where we need % to be expanded first.
+.SECONDEXPANSION:
+
+$(patsubst %,$(obj)/%.gen.S, $(fw-shipped-y)): %: $(wordsize_deps) \
+		| $(objtree)/$$(dir %)
 	$(call cmd,fwbin,$(patsubst %.gen.S,%,$@))
 $(patsubst %,$(obj)/%.gen.S, $(fw-external-y)): %: $(wordsize_deps) \
-		include/config/extra/firmware/dir.h
+		include/config/extra/firmware/dir.h | $(objtree)/$$(dir %)
 	$(call cmd,fwbin,$(fwabs)/$(patsubst $(obj)/%.gen.S,%,$@))
 
 # The .o files depend on the binaries directly; the .S files don't.
@@ -190,13 +250,25 @@ $(patsubst %,$(obj)/%.gen.o, $(fw-external-y)): $(obj)/%.gen.o: $(fwdir)/%
 
 # .ihex is used just as a simple way to hold binary files in a source tree
 # where binaries are frowned upon. They are directly converted with objcopy.
-$(obj)/%: $(obj)/%.ihex
+$(obj)/%: $(obj)/%.ihex | $(objtree)/$(obj)/$$(dir %)
 	$(call cmd,ihex)
+
+$(obj)/%.fw: $(objtree)/$(obj)/$$(dir %.fw)
+	$(call cmd,copy)
+
+$(obj)/%.img: $(objtree)/$(obj)/$$(dir %.img)
+	$(call cmd,copy)
+
+$(obj)/%.bin: $(objtree)/$(obj)/$$(dir %.bin)
+	$(call cmd,copy)
+
+$(obj)/%.txt: $(objtree)/$(obj)/$$(dir %.txt)
+	$(call cmd,copy)
 
 # Don't depend on ihex2fw if we're installing and it already exists.
 # Putting it after | in the dependencies doesn't seem sufficient when
 # we're installing after a cross-compile, because ihex2fw has dependencies
-# on stuff like /usr/lib/gcc/ppc64-redhat-linux/4.3.0/include/stddef.h and 
+# on stuff like /usr/lib/gcc/ppc64-redhat-linux/4.3.0/include/stddef.h and
 # thus wants to be rebuilt. Which it can't be, if the prebuilt kernel tree
 # is exported read-only for someone to run 'make install'.
 ifeq ($(INSTALL):$(wildcard $(obj)/ihex2fw),install:$(obj)/ihex2fw)
@@ -209,12 +281,15 @@ endif
 # is actually meaningful, because the firmware has to be loaded in a certain
 # order rather than as a single binary blob. Thus, we convert them into our
 # more compact binary representation of ihex records (<linux/ihex.h>)
-$(obj)/%.fw: $(obj)/%.HEX $(ihex2fw_dep)
+$(obj)/%.fw: $(obj)/%.HEX $(ihex2fw_dep) | $(objtree)/$(obj)/$$(dir %)
 	$(call cmd,ihex2fw)
 
 # .H16 is our own modified form of Intel HEX, with 16-bit length for records.
-$(obj)/%.fw: $(obj)/%.H16 $(ihex2fw_dep)
+$(obj)/%.fw: $(obj)/%.H16 $(ihex2fw_dep) | $(objtree)/$(obj)/$$(dir %)
 	$(call cmd,h16tofw)
+
+$(firmware-dirs):
+	$(call cmd,mkdir)
 
 obj-y				 += $(patsubst %,%.gen.o, $(fw-external-y))
 obj-$(CONFIG_FIRMWARE_IN_KERNEL) += $(patsubst %,%.gen.o, $(fw-shipped-y))

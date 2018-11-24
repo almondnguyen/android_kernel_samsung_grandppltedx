@@ -6,7 +6,7 @@ if HAS_IOMEM
 menu "Multifunction device drivers"
 
 config MFD_CORE
-	tristate
+	tristate "MFD core"
 	select IRQ_DOMAIN
 	default n
 
@@ -467,6 +467,26 @@ config MFD_MAX8998
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
+config MFD_MT6323
+	tristate "MediaTek MT6323 PMIC Support"
+	select MFD_CORE
+	select IRQ_DOMAIN
+	help
+	  Say yes here to add support for MediaTek MT6323 PMIC. This is
+	  a Power Management IC. This driver provides common support for
+	  accessing the device; additional drivers must be enabled in order
+	  to use the functionality of the device.
+
+config MFD_MT6397
+	tristate "MediaTek MT6397 PMIC Support"
+	select MFD_CORE
+	select IRQ_DOMAIN
+	help
+	  Say yes here to add support for MediaTek MT6397 PMIC. This is
+	  a Power Management IC. This driver provides common support for
+	  accessing the device; additional drivers must be enabled in order
+	  to use the functionality of the device.
+
 config MFD_MENF21BMC
 	tristate "MEN 14F021P00 Board Management Controller Support"
 	depends on I2C
@@ -566,6 +586,25 @@ config MFD_PM8921_CORE
 
 	  Say M here if you want to include support for PM8921 chip as a module.
 	  This will build a module called "pm8921-core".
+
+config MFD_S2MU005
+	bool "SAMSUNG Electronics IF PMIC S2MU005 Series Support"
+	depends on I2C=y
+	select MFD_CORE
+	  help
+	  Support for the Samsung Electronics MFD series.
+	  This driver provides common support for accessing the device,
+	  additional drivers must be enabled in order to use the functionality
+	  of the device
+
+config MFD_SM5701
+	tristate "Support for SiliconMitus SM5701 I/F PMIC"
+	depends on I2C
+	select MFD_CORE
+	default n
+	help
+	  If you say yes to this option, support will be included for the
+	  SM5701 I/F PMIC chip.
 
 config MFD_SPMI_PMIC
 	tristate "Qualcomm SPMI PMICs"

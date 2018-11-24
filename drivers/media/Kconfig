@@ -205,6 +205,9 @@ config MEDIA_ATTACH
 	depends on MODULES
 	default MODULES
 
+# MTV driver support
+source "drivers/media/mtv/Kconfig"
+
 source "drivers/media/i2c/Kconfig"
 source "drivers/media/tuners/Kconfig"
 source "drivers/media/dvb-frontends/Kconfig"

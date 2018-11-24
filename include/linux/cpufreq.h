@@ -18,6 +18,8 @@
 #include <linux/notifier.h>
 #include <linux/spinlock.h>
 #include <linux/sysfs.h>
+#include <asm/cputime.h>
+
 
 /*********************************************************************
  *                        CPUFREQ INTERFACE                          *
@@ -171,6 +173,22 @@ static inline unsigned int cpufreq_quick_get_max(unsigned int cpu)
 	return 0;
 }
 static inline void disable_cpufreq(void) { }
+#endif
+
+#if defined (CONFIG_CPU_FREQ_LIMIT_USERSPACE)
+enum {
+	DVFS_NO_ID			= 0,
+
+	/* need to update now */
+	DVFS_TOUCH_ID			= 0x00000001,
+	DVFS_FINGER_ID			= 0x00000002,
+	DVFS_SDCHG_ID			= 0x00000004, // CONFIG_SW_SELF_DISCHARGING
+
+	DVFS_MAX_ID
+};
+
+int set_freq_limit(unsigned long id, unsigned int freq);
+int set_min_freq_limit(unsigned int freq);
 #endif
 
 /*********************************************************************
@@ -481,6 +499,9 @@ extern struct cpufreq_governor cpufreq_gov_ondemand;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE)
 extern struct cpufreq_governor cpufreq_gov_conservative;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_conservative)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
+extern struct cpufreq_governor cpufreq_gov_interactive;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
 #endif
 
 /*********************************************************************
@@ -597,4 +618,11 @@ unsigned int cpufreq_generic_get(unsigned int cpu);
 int cpufreq_generic_init(struct cpufreq_policy *policy,
 		struct cpufreq_frequency_table *table,
 		unsigned int transition_latency);
+
+/*********************************************************************
+ *                         CPUFREQ STATS                             *
+ *********************************************************************/
+
+void acct_update_power(struct task_struct *p, cputime_t cputime);
+
 #endif /* _LINUX_CPUFREQ_H */

@@ -72,6 +72,8 @@ source "drivers/hwmon/Kconfig"
 
 source "drivers/thermal/Kconfig"
 
+source "drivers/trusty/Kconfig"
+
 source "drivers/watchdog/Kconfig"
 
 source "drivers/ssb/Kconfig"
@@ -79,6 +81,10 @@ source "drivers/ssb/Kconfig"
 source "drivers/bcma/Kconfig"
 
 source "drivers/mfd/Kconfig"
+
+source "drivers/staging/samsung/sec_notifier/Kconfig"
+
+source "drivers/muic/Kconfig"
 
 source "drivers/regulator/Kconfig"
 
@@ -99,6 +105,8 @@ source "drivers/mmc/Kconfig"
 source "drivers/memstick/Kconfig"
 
 source "drivers/leds/Kconfig"
+
+source "drivers/switch/Kconfig"
 
 source "drivers/accessibility/Kconfig"
 
@@ -168,6 +176,10 @@ source "drivers/irqchip/Kconfig"
 
 source "drivers/ipack/Kconfig"
 
+source "drivers/battery/Kconfig"
+
+source "drivers/battery_v2/Kconfig"
+
 source "drivers/reset/Kconfig"
 
 source "drivers/fmc/Kconfig"
@@ -182,4 +194,7 @@ source "drivers/ras/Kconfig"
 
 source "drivers/thunderbolt/Kconfig"
 
+source "drivers/sensors/Kconfig"
+
+source "drivers/motor/Kconfig"
 endmenu

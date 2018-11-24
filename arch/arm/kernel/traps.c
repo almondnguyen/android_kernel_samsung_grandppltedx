@@ -37,7 +37,10 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 #include <asm/opcodes.h>
-
+#include <mt-plat/mt_hooks.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
 
 static const char *handler[]= {
 	"prefetch abort",
@@ -242,7 +245,9 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 
 	printk(KERN_EMERG "Internal error: %s: %x [#%d]" S_PREEMPT S_SMP
 	       S_ISA "\n", str, err, ++die_counter);
-
+#ifdef CONFIG_SEC_DEBUG
+	crash_kexec(regs);
+#endif
 	/* trap and error numbers are mostly meaningless on ARM */
 	ret = notify_die(DIE_OOPS, str, regs, err, tsk->thread.trap_no, SIGSEGV);
 	if (ret == NOTIFY_STOP)
@@ -302,7 +307,8 @@ static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	if (!die_nest_count)
 		/* Nest count reaches zero, release the lock. */
 		arch_spin_unlock(&die_lock);
-	raw_local_irq_restore(flags);
+	/* not enable irq incase softirq many turn off msdc clock */
+	/*raw_local_irq_restore(flags);*/
 	oops_exit();
 
 	if (in_interrupt())
@@ -329,7 +335,9 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	if (__die(str, err, regs))
 		sig = 0;
-
+#if defined(CONFIG_SEC_DEBUG)
+	sec_debug_store_backtrace(regs);
+#endif
 	oops_end(flags, regs, sig);
 }
 
@@ -391,7 +399,7 @@ static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
 {
 	struct undef_hook *hook;
 	unsigned long flags;
-	int (*fn)(struct pt_regs *regs, unsigned int instr) = NULL;
+	int (*fn)(struct pt_regs *regs, unsigned int instr) = arm_undefinstr_retry;
 
 	raw_spin_lock_irqsave(&undef_lock, flags);
 	list_for_each_entry(hook, &undef_hook, node)
@@ -457,7 +465,9 @@ die_sig:
 	info.si_errno = 0;
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = pc;
-
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_store_fault_addr(-1, regs);
+#endif
 	arm_notify_die("Oops - undefined instruction", regs, &info, 0, 6);
 }
 

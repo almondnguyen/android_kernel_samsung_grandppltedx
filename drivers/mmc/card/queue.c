@@ -50,6 +50,9 @@ static int mmc_queue_thread(void *d)
 {
 	struct mmc_queue *mq = d;
 	struct request_queue *q = mq->queue;
+#ifdef MTK_BKOPS_IDLE_MAYA
+	struct mmc_card *card = mq->card;
+#endif
 
 	current->flags |= PF_MEMALLOC;
 
@@ -94,6 +97,9 @@ static int mmc_queue_thread(void *d)
 				set_current_state(TASK_RUNNING);
 				break;
 			}
+#ifdef MTK_BKOPS_IDLE_MAYA
+			mmc_start_delayed_bkops(card);
+#endif
 			up(&mq->thread_sem);
 			schedule();
 			down(&mq->thread_sem);
@@ -405,15 +411,19 @@ void mmc_packed_clean(struct mmc_queue *mq)
 /**
  * mmc_queue_suspend - suspend a MMC request queue
  * @mq: MMC queue to suspend
+ * @wait: Wait till MMC request queue is empty
  *
  * Stop the block request queue, and wait for our thread to
  * complete any outstanding requests.  This ensures that we
  * won't suspend while a request is being processed.
  */
-void mmc_queue_suspend(struct mmc_queue *mq)
+int mmc_queue_suspend(struct mmc_queue *mq, int wait)
 {
 	struct request_queue *q = mq->queue;
 	unsigned long flags;
+	int rc = 0;
+	struct mmc_card *card = mq->card;
+	struct request *req;
 
 	if (!(mq->flags & MMC_QUEUE_SUSPENDED)) {
 		mq->flags |= MMC_QUEUE_SUSPENDED;
@@ -422,8 +432,46 @@ void mmc_queue_suspend(struct mmc_queue *mq)
 		blk_stop_queue(q);
 		spin_unlock_irqrestore(q->queue_lock, flags);
 
-		down(&mq->thread_sem);
-	}
+		rc = down_trylock(&mq->thread_sem);
+		if (rc && !wait) {
+			/*
+			 * Failed to take the lock so better to abort the
+			 * suspend because mmcqd thread is processing requests.
+			 */
+			mq->flags &= ~MMC_QUEUE_SUSPENDED;
+			spin_lock_irqsave(q->queue_lock, flags);
+			blk_start_queue(q);
+			spin_unlock_irqrestore(q->queue_lock, flags);
+			rc = -EBUSY;
+		} else if (wait) {
+			printk("%s: mq->flags: %ld, q->queue_flags: %lu,\
+					q->in_flight (%d, %d)\n",
+					mmc_hostname(mq->card->host), mq->flags,
+					q->queue_flags, q->in_flight[0], q->in_flight[1]);
+			/*
+			 * wait is set only when mmc_blk_shutdown calls this,
+			 */
+			mutex_lock(&q->sysfs_lock);
+			queue_flag_set_unlocked(QUEUE_FLAG_DYING, q);
+
+			spin_lock_irqsave(q->queue_lock, flags);
+			queue_flag_set(QUEUE_FLAG_DYING, q);
+
+			while ((req = blk_fetch_request(q)) != NULL) {
+				req->cmd_flags |= REQ_QUIET;
+				__blk_end_request_all(req, -EIO);
+			}
+
+			spin_unlock_irqrestore(q->queue_lock, flags);
+			mutex_unlock(&q->sysfs_lock);
+			if (rc) {
+				down(&mq->thread_sem);
+				rc = 0;
+			}
+		}
+ 	}
+out:
+	return rc;
 }
 
 /**

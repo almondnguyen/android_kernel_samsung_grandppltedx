@@ -190,6 +190,11 @@ struct usb_function {
 
 	struct usb_os_desc_table	*os_desc_table;
 	unsigned			os_desc_n;
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	int (*set_intf_num)(struct usb_function *f,
+				int intf_num, int index_num);
+	int (*set_config_desc)(int conf_num);
+#endif
 
 	/* REVISIT:  bind() functions can be marked __init, which
 	 * makes trouble for section mismatch analysis.  See if
@@ -562,6 +567,7 @@ struct usb_function_instance {
 	struct config_group group;
 	struct list_head cfs_list;
 	struct usb_function_driver *fd;
+	struct usb_function *f;
 	int (*set_inst_name)(struct usb_function_instance *inst,
 			      const char *name);
 	void (*free_func_inst)(struct usb_function_instance *inst);

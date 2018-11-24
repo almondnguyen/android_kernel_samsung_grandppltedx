@@ -219,11 +219,31 @@ static int fat_write_begin(struct file *file, struct address_space *mapping,
 			struct page **pagep, void **fsdata)
 {
 	int err;
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	struct page_pid_logger *tmp_logger;
+	unsigned long page_index;
+	/*extern spinlock_t g_locker;*/
+	unsigned long g_flags;
+#endif
 
 	*pagep = NULL;
 	err = cont_write_begin(file, mapping, pos, len, flags,
 				pagep, fsdata, fat_get_block,
 				&MSDOS_I(mapping->host)->mmu_private);
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	if (page_logger && (*pagep)) {
+		page_index = (unsigned long)(__page_to_pfn(*pagep)) - PHYS_PFN_OFFSET;
+		tmp_logger = ((struct page_pid_logger *)page_logger) + page_index;
+		spin_lock_irqsave(&g_locker, g_flags);
+		if (page_index < (system_dram_size >> PAGE_SHIFT)) {
+			if (tmp_logger->pid1 == 0XFFFF)
+				tmp_logger->pid1 = current->pid;
+			else if (tmp_logger->pid1 != current->pid)
+				tmp_logger->pid2 = current->pid;
+		}
+		spin_unlock_irqrestore(&g_locker, g_flags);
+	}
+#endif
 	if (err < 0)
 		fat_write_failed(mapping, pos + len);
 	return err;
@@ -605,7 +625,7 @@ static void fat_set_state(struct super_block *sb,
 			b->fat16.state &= ~FAT_STATE_DIRTY;
 	}
 
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	sync_dirty_buffer(bh);
 	brelse(bh);
 }
@@ -624,12 +644,18 @@ static void fat_put_super(struct super_block *sb)
 {
 	struct msdos_sb_info *sbi = MSDOS_SB(sb);
 
+	fat_msg(sb, KERN_INFO, "trying to unmount...");
+	ST_LOG("<%s> trying to umount... %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
+
 	fat_set_state(sb, 0, 0);
 
 	iput(sbi->fsinfo_inode);
 	iput(sbi->fat_inode);
 
 	call_rcu(&sbi->rcu, delayed_free);
+
+	fat_msg(sb, KERN_INFO, "unmounted successfully!");
+	ST_LOG("<%s> unmounted successfully! %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 }
 
 static struct kmem_cache *fat_inode_cachep;
@@ -785,7 +811,7 @@ retry:
 				  &raw_entry->adate, NULL);
 	}
 	spin_unlock(&sbi->inode_hash_lock);
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	err = 0;
 	if (wait)
 		err = sync_dirty_buffer(bh);
@@ -1495,6 +1521,8 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	long error;
 	char buf[50];
 
+	fat_msg(sb, KERN_INFO, "trying to mount...");
+	ST_LOG("<%s> trying to mount... %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 	/*
 	 * GFP_KERNEL is ok here, because while we do hold the
 	 * supeblock lock, memory pressure can't call back into
@@ -1502,8 +1530,11 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	 * it and have no inodes etc active!
 	 */
 	sbi = kzalloc(sizeof(struct msdos_sb_info), GFP_KERNEL);
-	if (!sbi)
+	if (!sbi) {
+		fat_msg(sb, KERN_ERR, "failed to mount! (ENOMEM)");
+		ST_LOG("<%s> failed to mount! %d:%d (ENOMEM)", __func__, MAJOR(sb->s_dev), MINOR(sb->s_dev));
 		return -ENOMEM;
+	}
 	sb->s_fs_info = sbi;
 
 	sb->s_flags |= MS_NODIRATIME;
@@ -1749,6 +1780,8 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	}
 
 	fat_set_state(sb, 1, 0);
+	fat_msg(sb, KERN_INFO, "mounted successfully!");
+	ST_LOG("<%s> mounted successfully! %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 	return 0;
 
 out_invalid:
@@ -1757,6 +1790,8 @@ out_invalid:
 		fat_msg(sb, KERN_INFO, "Can't find a valid FAT filesystem");
 
 out_fail:
+	fat_msg(sb, KERN_ERR, "failed to mount!");
+	ST_LOG("<%s> failed to mount %d:%d",__func__,MAJOR(sb->s_dev),MINOR(sb->s_dev));
 	if (fsinfo_inode)
 		iput(fsinfo_inode);
 	if (fat_inode)

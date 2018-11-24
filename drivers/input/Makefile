@@ -4,6 +4,10 @@
 
 # Each configuration option enables a list of files.
 
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/performance/perfmgr/
+
 obj-$(CONFIG_INPUT)		+= input-core.o
 input-core-y := input.o input-compat.o input-mt.o ff-core.o
 
@@ -23,5 +27,10 @@ obj-$(CONFIG_INPUT_JOYSTICK)	+= joystick/
 obj-$(CONFIG_INPUT_TABLET)	+= tablet/
 obj-$(CONFIG_INPUT_TOUCHSCREEN)	+= touchscreen/
 obj-$(CONFIG_INPUT_MISC)	+= misc/
+obj-$(CONFIG_INPUT_GRIP)	+= grip/
+obj-$(CONFIG_MTK_FINGERPRINT)  += fingerprint/
 
 obj-$(CONFIG_INPUT_APMPOWER)	+= apm-power.o
+obj-$(CONFIG_INPUT_KEYRESET)	+= keyreset.o
+obj-$(CONFIG_INPUT_KEYCOMBO)	+= keycombo.o
+obj-$(CONFIG_DRV_SAMSUNG)	+= sec_cmd.o

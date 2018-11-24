@@ -1,9 +1,9 @@
 /*
  *  Universal power supply monitor class
  *
- *  Copyright © 2007  Anton Vorontsov <cbou@mail.ru>
- *  Copyright © 2004  Szabolcs Gyurko
- *  Copyright © 2003  Ian Molton <spyro@f2s.com>
+ *  Copyright  2007  Anton Vorontsov <cbou@mail.ru>
+ *  Copyright  2004  Szabolcs Gyurko
+ *  Copyright  2003  Ian Molton <spyro@f2s.com>
  *
  *  Modified: 2004, Oct     Szabolcs Gyurko
  *
@@ -17,10 +17,11 @@
 #include <linux/leds.h>
 #include <linux/spinlock.h>
 #include <linux/notifier.h>
+#include <linux/types.h>
 
 /*
  * All voltages, currents, charges, energies, time and temperatures in uV,
- * µA, µAh, µWh, seconds and tenths of degree Celsius unless otherwise
+ * A, Ah, Wh, seconds and tenths of degree Celsius unless otherwise
  * stated. It's driver's job to convert its raw values to units in which
  * this class operates.
  */
@@ -44,6 +45,8 @@ enum {
 	POWER_SUPPLY_CHARGE_TYPE_NONE,
 	POWER_SUPPLY_CHARGE_TYPE_TRICKLE,
 	POWER_SUPPLY_CHARGE_TYPE_FAST,
+	POWER_SUPPLY_CHARGE_TYPE_TAPER,
+	POWER_SUPPLY_CHARGE_TYPE_SLOW,
 };
 
 enum {
@@ -56,6 +59,10 @@ enum {
 	POWER_SUPPLY_HEALTH_COLD,
 	POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE,
 	POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE,
+	POWER_SUPPLY_HEALTH_WARM,
+	POWER_SUPPLY_HEALTH_COOL,
+	POWER_SUPPLY_HEALTH_UNDERVOLTAGE,
+	POWER_SUPPLY_HEALTH_OVERHEATLIMIT,
 };
 
 enum {
@@ -83,6 +90,20 @@ enum {
 	POWER_SUPPLY_SCOPE_DEVICE,
 };
 
+enum {
+	POWER_SUPPLY_DP_DM_UNKNOWN = 0,
+	POWER_SUPPLY_DP_DM_PREPARE = 1,
+	POWER_SUPPLY_DP_DM_UNPREPARE = 2,
+	POWER_SUPPLY_DP_DM_CONFIRMED_HVDCP3 = 3,
+	POWER_SUPPLY_DP_DM_DP_PULSE = 4,
+	POWER_SUPPLY_DP_DM_DM_PULSE = 5,
+	POWER_SUPPLY_DP_DM_DP0P6_DMF = 6,
+	POWER_SUPPLY_DP_DM_DP0P6_DM3P3 = 7,
+	POWER_SUPPLY_DP_DM_DPF_DMF = 8,
+	POWER_SUPPLY_DP_DM_DPR_DMR = 9,
+	POWER_SUPPLY_DP_DM_HVDCP3_SUPPORTED = 10,
+};
+
 enum power_supply_property {
 	/* Properties of type `int' */
 	POWER_SUPPLY_PROP_STATUS = 0,
@@ -105,15 +126,23 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_CURRENT_BOOT,
+	POWER_SUPPLY_PROP_CURRENT_FULL,
+	POWER_SUPPLY_PROP_POWER_DESIGN,
 	POWER_SUPPLY_PROP_POWER_NOW,
 	POWER_SUPPLY_PROP_POWER_AVG,
+	POWER_SUPPLY_PROP_FILTER_CFG,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_EMPTY_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_EMPTY,
 	POWER_SUPPLY_PROP_CHARGE_NOW,
+	POWER_SUPPLY_PROP_CHARGE_NOW_RAW,
+	POWER_SUPPLY_PROP_CHARGE_NOW_ERROR,
 	POWER_SUPPLY_PROP_CHARGE_AVG,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL,
+	POWER_SUPPLY_PROP_CHARGE_POWERED_OTG_CONTROL,
+	POWER_SUPPLY_PROP_CHARGE_UNO_CONTROL,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
@@ -131,6 +160,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CAPACITY_ALERT_MIN, /* in percents! */
 	POWER_SUPPLY_PROP_CAPACITY_ALERT_MAX, /* in percents! */
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
+	POWER_SUPPLY_PROP_CAPACITY_RAW,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_TEMP_MAX,
 	POWER_SUPPLY_PROP_TEMP_MIN,
@@ -147,22 +177,103 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_SCOPE,
 	POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT,
 	POWER_SUPPLY_PROP_CALIBRATE,
-	/* Properties of type `const char *' */
-	POWER_SUPPLY_PROP_MODEL_NAME,
+	/* Local extensions */
+	POWER_SUPPLY_PROP_USB_HC,
+	POWER_SUPPLY_PROP_USB_OTG,
+	POWER_SUPPLY_PROP_CHARGE_ENABLED,
+	POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED,
+	POWER_SUPPLY_PROP_CHARGING_ENABLED,
+	POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_TRIM,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_SETTLED,
+	POWER_SUPPLY_PROP_VCHG_LOOP_DBC_BYPASS,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW,
+	POWER_SUPPLY_PROP_HI_POWER,
+	POWER_SUPPLY_PROP_LOW_POWER,
+	POWER_SUPPLY_PROP_COOL_TEMP,
+	POWER_SUPPLY_PROP_WARM_TEMP,
+	POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL,
+	POWER_SUPPLY_PROP_RESISTANCE,
+	POWER_SUPPLY_PROP_RESISTANCE_CAPACITIVE,
+	POWER_SUPPLY_PROP_RESISTANCE_ID, /* in Ohms */
+	POWER_SUPPLY_PROP_RESISTANCE_NOW,
+	POWER_SUPPLY_PROP_FLASH_CURRENT_MAX,
+	POWER_SUPPLY_PROP_UPDATE_NOW,
+	POWER_SUPPLY_PROP_ESR_COUNT,
+	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
+	POWER_SUPPLY_PROP_CHARGE_DONE,
+	POWER_SUPPLY_PROP_ALLOW_DETECTION,
+	POWER_SUPPLY_PROP_FLASH_ACTIVE,
+	POWER_SUPPLY_PROP_FLASH_TRIGGER,
+	POWER_SUPPLY_PROP_FORCE_TLIM,
+	POWER_SUPPLY_PROP_DP_DM,
+	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMITED,
+	POWER_SUPPLY_PROP_RERUN_AICL,
+	POWER_SUPPLY_PROP_CYCLE_COUNT_ID,
+	POWER_SUPPLY_PROP_SAFETY_TIMER_EXPIRED,
+	POWER_SUPPLY_PROP_RESTRICTED_CHARGING,
+	/* Local extensions of type int64_t */
+	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	POWER_SUPPLY_PROP_MANUFACTURER,
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
+	POWER_SUPPLY_PROP_BATTERY_TYPE,
+	POWER_SUPPLY_PROP_AFC_CHARGER_MODE,
+	/* Properties of type `const char *' */
+	POWER_SUPPLY_PROP_MODEL_NAME,
+
+	POWER_SUPPLY_PROP_MAX,
+	POWER_SUPPLY_EXT_PROP_MAX = POWER_SUPPLY_PROP_MAX + 256,
 };
 
 enum power_supply_type {
 	POWER_SUPPLY_TYPE_UNKNOWN = 0,
-	POWER_SUPPLY_TYPE_BATTERY,
-	POWER_SUPPLY_TYPE_UPS,
-	POWER_SUPPLY_TYPE_MAINS,
-	POWER_SUPPLY_TYPE_USB,		/* Standard Downstream Port */
-	POWER_SUPPLY_TYPE_USB_DCP,	/* Dedicated Charging Port */
-	POWER_SUPPLY_TYPE_USB_CDP,	/* Charging Downstream Port */
-	POWER_SUPPLY_TYPE_USB_ACA,	/* Accessory Charger Adapters */
+	POWER_SUPPLY_TYPE_BATTERY,			/* 1 */
+	POWER_SUPPLY_TYPE_UPS,				/* 2 */
+	POWER_SUPPLY_TYPE_MAINS,			/* 3 */
+	POWER_SUPPLY_TYPE_USB,				/* Standard Downstream Port (4) */
+	POWER_SUPPLY_TYPE_USB_DCP,			/* Dedicated Charging Port (5) */
+	POWER_SUPPLY_TYPE_USB_CDP,			/* Charging Downstream Port (6) */
+	POWER_SUPPLY_TYPE_USB_ACA,			/* Accessory Charger Adapters (7) */
+	POWER_SUPPLY_TYPE_BMS,				/* Battery Monitor System (8) */
+	POWER_SUPPLY_TYPE_MISC,				/* 9 */
+	POWER_SUPPLY_TYPE_WIRELESS,			/* WPC(10) */
+	POWER_SUPPLY_TYPE_CARDOCK,			/* 11 */
+	POWER_SUPPLY_TYPE_UARTOFF,			/* 12 */
+	POWER_SUPPLY_TYPE_OTG,				/* 13 */
+	POWER_SUPPLY_TYPE_LAN_HUB,			/* 14 */
+	POWER_SUPPLY_TYPE_MHL_500,			/* 15 */
+	POWER_SUPPLY_TYPE_MHL_900,			/* 16 */
+	POWER_SUPPLY_TYPE_MHL_1500,			/* 17 */
+	POWER_SUPPLY_TYPE_MHL_USB,			/* 18 */
+	POWER_SUPPLY_TYPE_SMART_OTG,			/* 19 */
+	POWER_SUPPLY_TYPE_SMART_NOTG,			/* 20 */
+	POWER_SUPPLY_TYPE_POWER_SHARING,		/* power sharing cable(21) */
+	POWER_SUPPLY_TYPE_HV_MAINS,			/* 22 */
+	POWER_SUPPLY_TYPE_HV_PREPARE_MAINS, 		/* 23 */
+	POWER_SUPPLY_TYPE_HV_ERR,			/* 24 */
+	POWER_SUPPLY_TYPE_MHL_USB_100,			/* 25 */
+	POWER_SUPPLY_TYPE_MHL_2000, 			/* 26 */
+	POWER_SUPPLY_TYPE_HV_UNKNOWN,			/* 27 */
+	POWER_SUPPLY_TYPE_MDOCK_TA,			/* Mdock charger(28) */
+	POWER_SUPPLY_TYPE_HMT_CONNECTED,		/* 29 */
+	POWER_SUPPLY_TYPE_HMT_CHARGE,			/* 30 */
+	POWER_SUPPLY_TYPE_USB_HVDCP,			/* 31 */
+	POWER_SUPPLY_TYPE_HV_WIRELESS,			/* fast wireless charging for WPC(32)*/
+	POWER_SUPPLY_TYPE_PMA_WIRELESS, 		/* PMA wireless charging(33) */
+	POWER_SUPPLY_TYPE_WIRELESS_PACK,		/* wireless charging pack (34) */
+	POWER_SUPPLY_TYPE_WIRELESS_PACK_TA,		/* wireless charging pack with TA (35) */
+	POWER_SUPPLY_TYPE_WIRELESS_STAND,		/* wireless charging stand pad type (36) */
+	POWER_SUPPLY_TYPE_WIRELESS_HV_STAND,	/* fast wireless charging stand pad type (37) */
+	POWER_SUPPLY_TYPE_HV_MAINS_12V,				/* 38 */
+	POWER_SUPPLY_TYPE_PDIC,             		/* 39 */
+	POWER_SUPPLY_TYPE_HV_MAINS_CHG_LIMIT,		/* 40 */
+	POWER_SUPPLY_TYPE_HV_QC20,			/* 41 - ILIM 1.8A - CHG 3.0A */
+	POWER_SUPPLY_TYPE_HV_QC30,			/* 42 - ILIM 3.0A - CHG 3.5A (Step Charging 4.2A -> 3.0A) */
+	POWER_SUPPLY_TYPE_MAX,
 };
+
+#define POWER_SUPPLY_TYPE_HV_WIRELESS_ETX	100
 
 enum power_supply_notifier_events {
 	PSY_EVENT_PROP_CHANGED,
@@ -171,6 +282,7 @@ enum power_supply_notifier_events {
 union power_supply_propval {
 	int intval;
 	const char *strval;
+	int64_t int64val;
 };
 
 struct device;
@@ -280,7 +392,26 @@ extern int power_supply_register_no_ws(struct device *parent,
 				 struct power_supply *psy);
 extern void power_supply_unregister(struct power_supply *psy);
 extern int power_supply_powers(struct power_supply *psy, struct device *dev);
-
+extern int power_supply_set_online(struct power_supply *psy, bool enable);
+extern int power_supply_set_current_limit(struct power_supply *psy, int limit);
+extern int power_supply_set_voltage_limit(struct power_supply *psy, int limit);
+extern int power_supply_set_online(struct power_supply *psy, bool enable);
+extern int power_supply_set_health_state(struct power_supply *psy, int health);
+extern int power_supply_set_present(struct power_supply *psy, bool enable);
+extern int power_supply_set_scope(struct power_supply *psy, int scope);
+extern int power_supply_set_usb_otg(struct power_supply *psy, int otg);
+extern int power_supply_set_charge_type(struct power_supply *psy, int type);
+extern int power_supply_set_supply_type(struct power_supply *psy,
+					enum power_supply_type supply_type);
+extern int power_supply_set_hi_power_state(struct power_supply *psy, int value);
+extern int power_supply_set_low_power_state(struct power_supply *psy,
+							int value);
+extern int power_supply_set_allow_detection(struct power_supply *psy,
+							int value);
+extern int power_supply_set_dp_dm(struct power_supply *psy,
+							int value);
+extern int power_supply_is_system_supplied(void);
+extern int power_supply_set_scope(struct power_supply *psy, int scope);
 /* For APM emulation, think legacy userspace. */
 extern struct class *power_supply_class;
 
@@ -300,6 +431,9 @@ static inline bool power_supply_is_amp_property(enum power_supply_property psp)
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
 	case POWER_SUPPLY_PROP_CURRENT_BOOT:
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW:
+	case POWER_SUPPLY_PROP_INPUT_CURRENT_MAX:
+	case POWER_SUPPLY_PROP_FLASH_CURRENT_MAX:
 		return 1;
 	default:
 		break;
@@ -337,3 +471,4 @@ static inline bool power_supply_is_watt_property(enum power_supply_property psp)
 }
 
 #endif /* __LINUX_POWER_SUPPLY_H__ */
+

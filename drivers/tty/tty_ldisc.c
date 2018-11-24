@@ -283,6 +283,9 @@ struct tty_ldisc *tty_ldisc_ref(struct tty_struct *tty)
 {
 	struct tty_ldisc *ld = NULL;
 
+	/*in case there is no ldisc_sem init or it's free already*/
+	WARN_ON(!(&tty->ldisc_sem));
+
 	if (ldsem_down_read_trylock(&tty->ldisc_sem)) {
 		ld = tty->ldisc;
 		if (!ld)

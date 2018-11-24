@@ -424,6 +424,10 @@ int clk_add_alias(const char *alias, const char *alias_dev_name, char *id,
 struct device_node;
 struct of_phandle_args;
 
+#ifdef CONFIG_SEC_PM
+void clock_debug_print_enabled(void);
+#endif
+
 #if defined(CONFIG_OF) && defined(CONFIG_COMMON_CLK)
 struct clk *of_clk_get(struct device_node *np, int index);
 struct clk *of_clk_get_by_name(struct device_node *np, const char *name);

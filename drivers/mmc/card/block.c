@@ -36,16 +36,34 @@
 #include <linux/compat.h>
 #include <linux/pm_runtime.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/mmc.h>
+
 #include <linux/mmc/ioctl.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
 
+#ifdef CONFIG_MMC_FFU
+#include <linux/mmc/ffu.h>
+#endif
+
 #include <asm/uaccess.h>
+/*add vmstat info with block tag log*/
+#include <linux/vmstat.h>
+#include <linux/vmalloc.h>
+#include <linux/memblock.h>
 
+#ifdef CONFIG_MTK_EXTMEM
+#include <linux/exm_driver.h>
+#endif
 #include "queue.h"
-
+#include <linux/time.h>
+#include <linux/debugfs.h>
+#include <linux/cpumask.h>
+#include <linux/kernel_stat.h>
+#include <linux/tick.h>
 MODULE_ALIAS("mmc:block");
 #ifdef MODULE_PARAM_PREFIX
 #undef MODULE_PARAM_PREFIX
@@ -58,15 +76,17 @@ MODULE_ALIAS("mmc:block");
 #define INAND_CMD38_ARG_SECERASE 0x80
 #define INAND_CMD38_ARG_SECTRIM1 0x81
 #define INAND_CMD38_ARG_SECTRIM2 0x88
-#define MMC_BLK_TIMEOUT_MS  (10 * 60 * 1000)        /* 10 minute timeout */
+#define MMC_BLK_TIMEOUT_MS  (30 * 1000)        /* 30 sec timeout */
 #define MMC_SANITIZE_REQ_TIMEOUT 240000
 #define MMC_EXTRACT_INDEX_FROM_ARG(x) ((x & 0x00FF0000) >> 16)
 
-#define mmc_req_rel_wr(req)	(((req->cmd_flags & REQ_FUA) || \
-				  (req->cmd_flags & REQ_META)) && \
+#define mmc_req_rel_wr(req)	((req->cmd_flags & REQ_FUA) && \
 				  (rq_data_dir(req) == WRITE))
 #define PACKED_CMD_VER	0x01
 #define PACKED_CMD_WR	0x02
+
+#define MMC_BLK_GEN_ERR		1<<0
+#define MMC_BLK_GEN_CMD_ERR	1<<1
 
 static DEFINE_MUTEX(block_mutex);
 
@@ -118,6 +138,9 @@ struct mmc_blk_data {
 	unsigned int	part_curr;
 	struct device_attribute force_ro;
 	struct device_attribute power_ro_lock;
+#ifdef MTK_BKOPS_IDLE_MAYA
+	struct device_attribute bkops_check_threshold;
+#endif
 	int	area_type;
 };
 
@@ -166,11 +189,7 @@ static struct mmc_blk_data *mmc_blk_get(struct gendisk *disk)
 
 static inline int mmc_get_devidx(struct gendisk *disk)
 {
-	int devmaj = MAJOR(disk_devt(disk));
-	int devidx = MINOR(disk_devt(disk)) / perdev_minors;
-
-	if (!devmaj)
-		devidx = disk->first_minor / perdev_minors;
+	int devidx = disk->first_minor / perdev_minors;
 	return devidx;
 }
 
@@ -286,6 +305,68 @@ out:
 	return ret;
 }
 
+#ifdef MTK_BKOPS_IDLE_MAYA
+static ssize_t bkops_check_threshold_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct mmc_blk_data *md = mmc_blk_get(dev_to_disk(dev));
+	struct mmc_card *card = md->queue.card;
+	int ret;
+
+	if (!card)
+		ret = -EINVAL;
+	else
+	    ret = snprintf(buf, PAGE_SIZE, "%d\n",
+		card->bkops_info.size_percentage_to_queue_delayed_work);
+
+	mmc_blk_put(md);
+	return ret;
+}
+
+static ssize_t bkops_check_threshold_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	char value;
+	struct mmc_blk_data *md = mmc_blk_get(dev_to_disk(dev));
+	struct mmc_card *card = md->queue.card;
+	unsigned int card_size;
+	int ret = count;
+	int cnt;
+
+	if (!card) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	cnt = sscanf(buf, "%s", &value);
+	if (cnt != 1)
+		return -1;
+
+	if ((value <= 0) || (value >= 100)) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	card_size = (unsigned int)get_capacity(md->disk);
+	if (card_size <= 0) {
+		ret = -EINVAL;
+		goto exit;
+	}
+	card->bkops_info.size_percentage_to_queue_delayed_work = value;
+	card->bkops_info.min_sectors_to_queue_delayed_work =
+		(card_size * value) / 100;
+
+	pr_err("%s: size_percentage = %d, min_sectors = %d",
+			mmc_hostname(card->host),
+			card->bkops_info.size_percentage_to_queue_delayed_work,
+			card->bkops_info.min_sectors_to_queue_delayed_work);
+
+exit:
+	mmc_blk_put(md);
+	return count;
+}
+#endif
 static int mmc_blk_open(struct block_device *bdev, fmode_t mode)
 {
 	struct mmc_blk_data *md = mmc_blk_get(bdev->bd_disk);
@@ -425,9 +506,11 @@ static int ioctl_do_sanitize(struct mmc_card *card)
 	pr_debug("%s: %s - SANITIZE IN PROGRESS...\n",
 		mmc_hostname(card->host), __func__);
 
+	trace_mmc_blk_erase_start(EXT_CSD_SANITIZE_START, 0, 0);
 	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					EXT_CSD_SANITIZE_START, 1,
 					MMC_SANITIZE_REQ_TIMEOUT);
+	trace_mmc_blk_erase_end(EXT_CSD_SANITIZE_START, 0, 0);
 
 	if (err)
 		pr_err("%s: %s - EXT_CSD_SANITIZE_START failed. err=%d\n",
@@ -438,6 +521,136 @@ static int ioctl_do_sanitize(struct mmc_card *card)
 out:
 	return err;
 }
+#ifdef CONFIG_MMC_FFU
+/* This function is modified by from mmc_blk_ioctl() */
+static int mmc_ffu_ioctl(struct block_device *bdev,
+	struct mmc_ioc_cmd __user *ic_ptr)
+{
+	struct mmc_blk_ioc_data *idata;
+	struct mmc_blk_data *md;
+	struct mmc_card *card;
+	struct mmc_command cmd = {0};
+	struct mmc_data data = {0};
+	struct mmc_request mrq = {NULL};
+	struct scatterlist sg;
+	int err = 0;
+
+	idata = mmc_ffu_ioctl_copy_from_user(ic_ptr);
+	if (IS_ERR(idata))
+		return PTR_ERR(idata);
+
+	md = mmc_blk_get(bdev->bd_disk);
+	if (!md) {
+		err = -EINVAL;
+		goto cmd_err;
+	}
+
+	card = md->queue.card;
+	if (IS_ERR(card)) {
+		err = PTR_ERR(card);
+		goto cmd_done;
+	}
+
+	cmd.opcode = idata->ic.opcode;
+	cmd.arg = idata->ic.arg;
+	cmd.flags = idata->ic.flags;
+
+	if (idata->buf_bytes) {
+		data.sg = &sg;
+		data.sg_len = 1;
+		data.blksz = idata->ic.blksz;
+		data.blocks = idata->ic.blocks;
+
+		sg_init_one(data.sg, idata->buf, idata->buf_bytes);
+
+		if (idata->ic.write_flag)
+			data.flags = MMC_DATA_WRITE;
+		else
+			data.flags = MMC_DATA_READ;
+
+		/* data.flags must already be set before doing this. */
+		mmc_set_data_timeout(&data, card);
+
+		/* Allow overriding the timeout_ns for empirical tuning. */
+		if (idata->ic.data_timeout_ns)
+			data.timeout_ns = idata->ic.data_timeout_ns;
+
+		if ((cmd.flags & MMC_RSP_R1B) == MMC_RSP_R1B) {
+			/*
+			 * Pretend this is a data transfer and rely on the
+			 * host driver to compute timeout.  When all host
+			 * drivers support cmd.cmd_timeout for R1B, this
+			 * can be changed to:
+			 *
+			 *     mrq.data = NULL;
+			 *     cmd.cmd_timeout = idata->ic.cmd_timeout_ms;
+			 */
+			data.timeout_ns = idata->ic.cmd_timeout_ms * 1000000;
+		}
+
+		mrq.data = &data;
+	}
+
+	mrq.cmd = &cmd;
+
+	mmc_claim_host(card->host);
+
+	if (cmd.opcode == MMC_FFU_DOWNLOAD_OP) {
+		pr_err("FFU Download start\n");
+		err = mmc_ffu_download(card, &cmd , idata->buf,
+			idata->buf_bytes);
+
+		if (err) {
+			pr_err("FFU: %s: error %d FFU download:\n",
+				mmc_hostname(card->host), err);
+		}
+
+	}
+
+	if (cmd.opcode == MMC_SEND_EXT_CSD) {
+
+		mmc_wait_for_req(card->host, &mrq);
+
+		if (cmd.error) {
+			dev_err(mmc_dev(card->host), "%s: cmd error %d\n",
+				__func__, cmd.error);
+			err = cmd.error;
+			goto cmd_rel_host;
+		}
+		if (data.error) {
+			dev_err(mmc_dev(card->host), "%s: data error %d\n",
+				__func__, data.error);
+			err = data.error;
+			goto cmd_rel_host;
+		}
+
+		if (copy_to_user(&(ic_ptr->response), cmd.resp, sizeof(cmd.resp))) {
+			err = -EFAULT;
+			goto cmd_rel_host;
+		}
+
+		if (!idata->ic.write_flag) {
+			if (copy_to_user((void __user *)(unsigned long) idata->ic.data_ptr,
+				idata->buf, idata->buf_bytes)) {
+				err = -EFAULT;
+				goto cmd_rel_host;
+			}
+		}
+
+	}
+
+cmd_rel_host:
+	mmc_release_host(card->host);
+
+cmd_done:
+	mmc_blk_put(md);
+cmd_err:
+	kfree(idata->buf);
+	kfree(idata);
+	return err;
+
+}
+#endif
 
 static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	struct mmc_ioc_cmd __user *ic_ptr)
@@ -616,6 +829,10 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	int ret = -EINVAL;
 	if (cmd == MMC_IOC_CMD)
 		ret = mmc_blk_ioctl_cmd(bdev, (struct mmc_ioc_cmd __user *)arg);
+#ifdef CONFIG_MMC_FFU
+	else if (cmd == MMC_IOC_FFU_CMD)
+		ret = mmc_ffu_ioctl(bdev, (struct mmc_ioc_cmd __user *)arg);
+#endif
 	return ret;
 }
 
@@ -736,8 +953,29 @@ static int get_card_status(struct mmc_card *card, u32 *status, int retries)
 	return err;
 }
 
+static int send_stop_raw(struct mmc_card *card, u32 *status)
+{
+	struct mmc_command cmd = {0};
+	int err;
+
+	cmd.opcode = MMC_STOP_TRANSMISSION;
+	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(card->host, &cmd, 5);
+	if (err == 0)
+		*status = cmd.resp[0];
+	return err;
+}
+
+#define CMD_ERRORS							\
+	(R1_OUT_OF_RANGE |	/* Command argument out of range */	\
+	 R1_ADDRESS_ERROR |	/* Misaligned address */		\
+	 R1_BLOCK_LEN_ERROR |	/* Transferred block length incorrect */\
+	 R1_WP_VIOLATION |	/* Tried to write to protected block */	\
+	 R1_CC_ERROR |		/* Card controller error */		\
+	 R1_ERROR)		/* General/unknown error */
+
 static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
-		bool hw_busy_detect, struct request *req, int *gen_err)
+		bool hw_busy_detect, struct request *req, unsigned int *gen_err)
 {
 	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
 	int err = 0;
@@ -751,10 +989,19 @@ static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
 			return err;
 		}
 
-		if (status & R1_ERROR) {
-			pr_err("%s: %s: error sending status cmd, status %#x\n",
-				req->rq_disk->disk_name, __func__, status);
-			*gen_err = 1;
+		if (status & CMD_ERRORS) {
+			pr_err("%s: %s: command error reported, status %#x\n",
+					req->rq_disk->disk_name, __func__, status);
+			if (status & R1_ERROR)
+				*gen_err |= MMC_BLK_GEN_ERR;
+			if (!(status & R1_WP_VIOLATION) && !(status & R1_ERROR))
+				*gen_err |= MMC_BLK_GEN_CMD_ERR;
+			if ((R1_CURRENT_STATE(status) == R1_STATE_RCV) ||
+					(R1_CURRENT_STATE(status) == R1_STATE_DATA)) {
+				err = send_stop_raw(card, &status);
+				if (err)
+					return err;
+			}
 		}
 
 		/* We may rely on the host hw to handle busy detection.*/
@@ -785,7 +1032,7 @@ static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
 }
 
 static int send_stop(struct mmc_card *card, unsigned int timeout_ms,
-		struct request *req, int *gen_err, u32 *stop_status)
+		struct request *req, unsigned int *gen_err, u32 *stop_status)
 {
 	struct mmc_host *host = card->host;
 	struct mmc_command cmd = {0};
@@ -823,10 +1070,163 @@ static int send_stop(struct mmc_card *card, unsigned int timeout_ms,
 		(*stop_status & R1_ERROR)) {
 		pr_err("%s: %s: general error sending stop command, resp %#x\n",
 			req->rq_disk->disk_name, __func__, *stop_status);
-		*gen_err = 1;
+		*gen_err |= MMC_BLK_GEN_ERR;
 	}
 
 	return card_busy_detect(card, timeout_ms, use_r1b_resp, req, gen_err);
+}
+
+static void mmc_error_count_log(struct mmc_card *card, int index, int error, u32 status)
+{
+	struct mmc_card_error_log *err_log;
+	int i = 0;
+	int cpu = raw_smp_processor_id();
+
+	err_log = card->err_log;
+
+	for (i = 0; i < 2; i++)
+	{
+		if (err_log[index + i].err_type == error) {
+			index += i;
+			break;
+		}
+	}
+
+	if (i >= 2)
+		return;
+
+	if (!err_log[index].status)
+		err_log[index].status = status;
+	if (!err_log[index].first_issue_time)
+		err_log[index].first_issue_time = cpu_clock(cpu);
+	err_log[index].last_issue_time = cpu_clock(cpu);
+	err_log[index].count++;
+}
+
+static void mmc_card_error_logging(struct mmc_card *card, struct mmc_blk_request *brq, u32 status)
+{
+	int index = 0;
+
+	if (brq->sbc.error)
+		mmc_error_count_log(card, index, brq->sbc.error, status);
+	if (brq->cmd.error) {
+		index = 2;
+		mmc_error_count_log(card, index, brq->cmd.error, status);
+	}
+	if (brq->data.error) {
+		index = 4;
+		mmc_error_count_log(card, index, brq->data.error, status);
+	}
+	if (brq->stop.error) {
+		index = 6;
+		mmc_error_count_log(card, index, brq->stop.error, status);
+	}
+
+	return;
+}
+
+static ssize_t error_count_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct gendisk *disk;
+	struct mmc_blk_data *md;
+	struct mmc_card *card = NULL;
+	struct mmc_card_error_log *err_log;
+	int total_len = 0;
+	int i = 0;
+
+	disk = dev_to_disk(dev);
+
+	if (disk) {
+		md = disk->private_data;
+		if (md)
+			card = md->queue.card;
+	}
+	if (!card) {
+		total_len = snprintf(buf, PAGE_SIZE, "It's no card error..\n");
+		goto out;
+	}
+
+	err_log = card->err_log;
+
+	total_len += snprintf(buf, PAGE_SIZE,
+				"type: err    status: first_issue_time:  last_issue_time:      count\n");
+
+	for (i = 0; i < 8; i++) {
+		total_len += snprintf(buf + (sizeof(char)*68*(i+1)), PAGE_SIZE,
+				"%4s:%4d 0x%08x %16llu, %16llu, %10d\n",
+				err_log[i].type, err_log[i].err_type,
+				err_log[i].status,
+				err_log[i].first_issue_time,
+				err_log[i].last_issue_time,
+				err_log[i].count);
+	}
+
+ out:
+	return total_len;
+}
+
+static ssize_t error_count_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct gendisk *disk;
+	struct mmc_blk_data *md;
+	struct mmc_card *card = NULL;
+	int value;
+
+	disk = dev_to_disk(dev);
+
+	if (disk) {
+		md = disk->private_data;
+		if (md)
+			card = md->queue.card;
+	}
+	if (!card)
+		goto out;
+
+	if (kstrtoint(buf, 0, &value))
+		goto out;
+
+ out:
+	return len;
+}
+
+static void mmc_card_debug_log_sysfs_init(struct mmc_card *card)
+{
+	struct mmc_blk_data *md = mmc_get_drvdata(card);
+
+	card->error_count.show = error_count_show;
+	card->error_count.store = error_count_store;
+	sysfs_attr_init(&card->error_count.attr);
+	card->error_count.attr.name = "err_count";
+
+	card->error_count.attr.mode = S_IRUGO | S_IWUSR;
+
+	if (device_create_file((disk_to_dev(md->disk)), &card->error_count)) {
+		pr_err("%s: Failed to create err_count sysfs entry\n",
+				mmc_hostname(card->host));
+		return;
+	}
+	/* init. card->err_log */
+	snprintf(card->err_log[0].type, sizeof(char)*4, "sbc ");
+	snprintf(card->err_log[1].type, sizeof(char)*4, "sbc ");
+	card->err_log[0].err_type = -EILSEQ;
+	card->err_log[1].err_type = -ETIMEDOUT;
+
+	snprintf(card->err_log[2].type, sizeof(char)*4, "cmd ");
+	snprintf(card->err_log[3].type, sizeof(char)*4, "cmd ");
+	card->err_log[2].err_type = -EILSEQ;
+	card->err_log[3].err_type = -ETIMEDOUT;
+
+	snprintf(card->err_log[4].type, sizeof(char)*4, "data");
+	snprintf(card->err_log[5].type, sizeof(char)*4, "data");
+	card->err_log[4].err_type = -EILSEQ;
+	card->err_log[5].err_type = -ETIMEDOUT;
+
+	snprintf(card->err_log[6].type, sizeof(char)*4, "stop");
+	snprintf(card->err_log[7].type, sizeof(char)*4, "stop");
+	card->err_log[6].err_type = -EILSEQ;
+	card->err_log[7].err_type = -ETIMEDOUT;
 }
 
 #define ERR_NOMEDIUM	3
@@ -850,18 +1250,22 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 			req->rq_disk->disk_name, "timed out", name, status);
 
 		/* If the status cmd initially failed, retry the r/w cmd */
-		if (!status_valid)
+		if (!status_valid) {
+			pr_err("%s: status not valid, retrying timeout\n", req->rq_disk->disk_name);
 			return ERR_RETRY;
-
+		}
 		/*
 		 * If it was a r/w cmd crc error, or illegal command
 		 * (eg, issued in wrong state) then retry - we should
 		 * have corrected the state problem above.
 		 */
-		if (status & (R1_COM_CRC_ERROR | R1_ILLEGAL_COMMAND))
+		if (status & (R1_COM_CRC_ERROR | R1_ILLEGAL_COMMAND)) {
+			pr_err("%s: command error, retrying timeout\n", req->rq_disk->disk_name);
 			return ERR_RETRY;
+		}
 
 		/* Otherwise abort the command */
+		pr_err("%s: not retrying timeout\n", req->rq_disk->disk_name);
 		return ERR_ABORT;
 
 	default:
@@ -891,7 +1295,7 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
  * Otherwise we don't understand what happened, so abort.
  */
 static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
-	struct mmc_blk_request *brq, int *ecc_err, int *gen_err)
+	struct mmc_blk_request *brq, int *ecc_err, unsigned int *gen_err)
 {
 	bool prev_cmd_status_valid = true;
 	u32 status, stop_status = 0;
@@ -929,6 +1333,8 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 	    (brq->cmd.resp[0] & R1_CARD_ECC_FAILED))
 		*ecc_err = 1;
 
+	mmc_card_error_logging(card, brq, status);
+
 	/* Flag General errors */
 	if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ)
 		if ((status & R1_ERROR) ||
@@ -936,7 +1342,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 			pr_err("%s: %s: general error sending stop or status command, stop cmd response %#x, card status %#x\n",
 			       req->rq_disk->disk_name, __func__,
 			       brq->stop.resp[0], status);
-			*gen_err = 1;
+			*gen_err |= MMC_BLK_GEN_ERR;
 		}
 
 	/*
@@ -1051,6 +1457,10 @@ static int mmc_blk_issue_discard_rq(struct mmc_queue *mq, struct request *req)
 
 	from = blk_rq_pos(req);
 	nr = blk_rq_sectors(req);
+#ifdef MTK_BKOPS_IDLE_MAYA
+	if (card->ext_csd.bkops_en)
+		card->bkops_info.sectors_changed += blk_rq_sectors(req);
+#endif
 
 	if (mmc_can_discard(card))
 		arg = MMC_DISCARD_ARG;
@@ -1185,14 +1595,6 @@ static inline void mmc_apply_rel_rw(struct mmc_blk_request *brq,
 	}
 }
 
-#define CMD_ERRORS							\
-	(R1_OUT_OF_RANGE |	/* Command argument out of range */	\
-	 R1_ADDRESS_ERROR |	/* Misaligned address */		\
-	 R1_BLOCK_LEN_ERROR |	/* Transferred block length incorrect */\
-	 R1_WP_VIOLATION |	/* Tried to write to protected block */	\
-	 R1_CC_ERROR |		/* Card controller error */		\
-	 R1_ERROR)		/* General/unknown error */
-
 static int mmc_blk_err_check(struct mmc_card *card,
 			     struct mmc_async_req *areq)
 {
@@ -1200,7 +1602,8 @@ static int mmc_blk_err_check(struct mmc_card *card,
 						    mmc_active);
 	struct mmc_blk_request *brq = &mq_mrq->brq;
 	struct request *req = mq_mrq->req;
-	int ecc_err = 0, gen_err = 0;
+	int ecc_err = 0;
+	unsigned int gen_err = 0;
 
 	/*
 	 * sbc.error indicates a problem with the set block count
@@ -1250,17 +1653,21 @@ static int mmc_blk_err_check(struct mmc_card *card,
 			pr_err("%s: %s: general error sending stop command, stop cmd response %#x\n",
 			       req->rq_disk->disk_name, __func__,
 			       brq->stop.resp[0]);
-			gen_err = 1;
+			gen_err |= MMC_BLK_GEN_ERR;
 		}
 
 		err = card_busy_detect(card, MMC_BLK_TIMEOUT_MS, false, req,
 					&gen_err);
+
+		if (gen_err & MMC_BLK_GEN_CMD_ERR)
+			brq->data.error = -EIO;
+
 		if (err)
 			return MMC_BLK_CMD_ERR;
 	}
 
 	/* if general error occurs, retry the write operation. */
-	if (gen_err) {
+	if (gen_err & MMC_BLK_GEN_ERR) {
 		pr_warn("%s: retrying write for general error\n",
 				req->rq_disk->disk_name);
 		return MMC_BLK_RETRY;
@@ -1375,8 +1782,7 @@ static void mmc_blk_rw_rq_prep(struct mmc_queue_req *mqrq,
 	 * XXX: this really needs a good explanation of why REQ_META
 	 * is treated special.
 	 */
-	bool do_rel_wr = ((req->cmd_flags & REQ_FUA) ||
-			  (req->cmd_flags & REQ_META)) &&
+	bool do_rel_wr = (req->cmd_flags & REQ_FUA) &&
 		(rq_data_dir(req) == WRITE) &&
 		(md->flags & MMC_BLK_REL_WR);
 
@@ -1829,7 +2235,189 @@ static void mmc_blk_revert_packed_req(struct mmc_queue *mq,
 
 	mmc_blk_clear_packed(mq_rq);
 }
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+#define PRT_TIME_PERIOD	1000000000
+#define UP_LIMITS_4BYTE		4294967295UL	/*((4*1024*1024*1024)-1)*/
+#define ID_CNT 10
+pid_t mmcqd[ID_CNT] = {0};
+bool start_async_req[ID_CNT] = {0};
+unsigned long long start_async_req_time[ID_CNT] = {0};
+unsigned long long mmcqd_tag_t1[ID_CNT] = {0}, mmccid_tag_t1 = 0;
+unsigned long long mmcqd_t_usage_wr[ID_CNT] = {0}, mmcqd_t_usage_rd[ID_CNT] = {0};
+unsigned int mmcqd_rq_size_wr[ID_CNT] = {0}, mmcqd_rq_size_rd[ID_CNT] = {0};
+static unsigned int mmcqd_wr_offset_tag[ID_CNT] = {0}, mmcqd_rd_offset_tag[ID_CNT] = {0};
+static unsigned int mmcqd_wr_offset[ID_CNT] = {0}, mmcqd_rd_offset[ID_CNT] = {0};
+static unsigned int mmcqd_wr_bit[ID_CNT] = {0}, mmcqd_wr_tract[ID_CNT] = {0};
+static unsigned int mmcqd_rd_bit[ID_CNT] = {0}, mmcqd_rd_tract[ID_CNT] = {0};
+static unsigned int mmcqd_wr_break[ID_CNT] = {0}, mmcqd_rd_break[ID_CNT] = {0};
+unsigned int mmcqd_rq_count[ID_CNT] = {0}, mmcqd_wr_rq_count[ID_CNT] = {0}, mmcqd_rd_rq_count[ID_CNT] = {0};
+#ifdef FEATURE_STORAGE_META_LOG
+int check_perdev_minors = CONFIG_MMC_BLOCK_MINORS;
+struct metadata_rwlogger metadata_logger[10] = { { {0} } };
+#endif
 
+unsigned int mmcqd_work_percent[ID_CNT] = {0};
+unsigned int mmcqd_w_throughput[ID_CNT] = {0};
+unsigned int mmcqd_r_throughput[ID_CNT] = {0};
+unsigned int mmcqd_read_clear[ID_CNT] = {0};
+char block_io_log_dst_buffer[BLOCK_IO_BUFFER_SIZE] = {0};
+char block_io_log_source_buffer[PID_LOG_LENGTH] = {0};
+struct struct_block_io_ring {
+	char block_io_log_debugfs[BLOCK_IO_BUFFER_SIZE];
+};
+#define MAX_BLOCK_IO_LOG_COUNT 120
+struct struct_block_io_ring block_io_ring[MAX_BLOCK_IO_LOG_COUNT] = { { { 0 } } };
+int block_io_ring_index = 0;
+int stopringlog = 0;
+static void g_var_clear(unsigned int idx)
+{
+				mmcqd_t_usage_wr[idx] = 0;
+				mmcqd_t_usage_rd[idx] = 0;
+				mmcqd_rq_size_wr[idx] = 0;
+				mmcqd_rq_size_rd[idx] = 0;
+				mmcqd_rq_count[idx] = 0;
+				mmcqd_wr_offset[idx] = 0;
+				mmcqd_rd_offset[idx] = 0;
+				mmcqd_wr_break[idx] = 0;
+				mmcqd_rd_break[idx] = 0;
+				mmcqd_wr_tract[idx] = 0;
+				mmcqd_wr_bit[idx] = 0;
+				mmcqd_rd_tract[idx] = 0;
+				mmcqd_rd_bit[idx] = 0;
+				mmcqd_wr_rq_count[idx] = 0;
+				mmcqd_rd_rq_count[idx] = 0;
+}
+
+unsigned int find_mmcqd_index(void)
+{
+	pid_t mmcqd_pid = 0;
+	unsigned int idx = 0;
+	unsigned char i = 0;
+
+	mmcqd_pid = task_pid_nr(current);
+
+	if (mmcqd[0] == 0) {
+		mmcqd[0] = mmcqd_pid;
+		start_async_req[0] = 0;
+	}
+
+	for (i = 0; i < ID_CNT; i++) {
+		if (mmcqd_pid == mmcqd[i]) {
+			idx = i;
+			break;
+		}
+		if ((mmcqd[i] == 0) || (i == ID_CNT-1)) {
+			mmcqd[i] = mmcqd_pid;
+			start_async_req[i] = 0;
+			idx = i;
+			break;
+		}
+	}
+	return idx;
+}
+
+#endif
+
+
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+
+struct struct_pid_logger g_pid_logger[PID_ID_CNT] = { {0, 0, {0} , {0} , {0} , {0} } };
+
+unsigned char *page_logger = NULL;
+spinlock_t g_locker;
+struct dentry *blockio_dbgfs = NULL;
+static unsigned long long get_current_time_us(void)
+{
+	unsigned long long time = sched_clock();
+	/* return do_div(time,1000); */
+	return time;
+}
+
+
+static int block_io_debug_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+static ssize_t block_io_debug_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
+{
+	size_t count1 = 0;
+	int index = 0;
+	int i = 0;
+	char *debug_fs = NULL;
+	struct struct_block_io_ring *tmp_logger;
+
+	stopringlog = 1;
+	index = block_io_ring_index;
+
+	debug_fs = vmalloc(MAX_BLOCK_IO_LOG_COUNT * sizeof(struct struct_block_io_ring));
+	if (debug_fs) {
+		memset(debug_fs, 0 , MAX_BLOCK_IO_LOG_COUNT * sizeof(struct struct_block_io_ring));
+	for (i = 0; i < MAX_BLOCK_IO_LOG_COUNT; i++) {
+		tmp_logger = ((struct struct_block_io_ring *)debug_fs) + i;
+		snprintf((tmp_logger->block_io_log_debugfs), BLOCK_IO_BUFFER_SIZE,
+			block_io_ring[(index + i)%MAX_BLOCK_IO_LOG_COUNT].block_io_log_debugfs);
+	}
+	count1 = simple_read_from_buffer(ubuf, count, ppos, debug_fs,
+		sizeof(struct struct_block_io_ring) * MAX_BLOCK_IO_LOG_COUNT);
+	vfree(debug_fs);
+		}
+	stopringlog = 0;
+	return count1;
+}
+static ssize_t block_io_debug_write(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	return 0;
+}
+
+
+static const struct file_operations block_io_debug_fops = {
+	.read = block_io_debug_read,
+	.write = block_io_debug_write,
+	.open = block_io_debug_open,
+};
+void block_io_dbg_Init(void)
+{
+	blockio_dbgfs = debugfs_create_file("blockio", S_IFREG | S_IRUGO, NULL, (void *)0, &block_io_debug_fops);
+}
+void block_io_dbg_deinit(void)
+{
+	debugfs_remove(blockio_dbgfs);
+}
+
+static u64 get_idle_time(int cpu)
+{
+	u64 idle, idle_time = -1ULL;
+
+	if (cpu_online(cpu))
+		idle_time = get_cpu_idle_time_us(cpu, NULL);
+
+	if (idle_time == -1ULL)
+		/* !NO_HZ or cpu offline so we can rely on cpustat.idle */
+		idle = kcpustat_cpu(cpu).cpustat[CPUTIME_IDLE];
+	else
+		idle = usecs_to_cputime64(idle_time);
+
+	return idle;
+}
+
+static u64 get_iowait_time(int cpu)
+{
+	u64 iowait, iowait_time = -1ULL;
+
+	if (cpu_online(cpu))
+		iowait_time = get_cpu_iowait_time_us(cpu, NULL);
+
+	if (iowait_time == -1ULL)
+		/* !NO_HZ or cpu offline so we can rely on cpustat.iowait */
+		iowait = kcpustat_cpu(cpu).cpustat[CPUTIME_IOWAIT];
+	else
+		iowait = usecs_to_cputime64(iowait_time);
+
+	return iowait;
+}
+
+#endif
 static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *rqc)
 {
 	struct mmc_blk_data *md = mq->data;
@@ -1842,13 +2430,253 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *rqc)
 	struct mmc_async_req *areq;
 	const u8 packed_nr = 2;
 	u8 reqs = 0;
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+	unsigned long long time1 = 0;
+	pid_t mmcqd_pid = 0;
+	unsigned long long t_period = 0, t_usage = 0;
+	unsigned int t_percent = 0;
+	unsigned int perf_meter = 0;
+	unsigned int rq_byte = 0, rq_sector = 0, sect_offset = 0;
+	unsigned int diversity = 0;
+	unsigned int idx = 0;
+#endif
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	unsigned int index = 0;
+	uint64_t time = 0;
+	unsigned long rem_nsec;
+	u64 user, nice, system, idle, iowait, irq, softirq;
+	int i;
+#endif
 
 	if (!rqc && !mq->mqrq_prev->req)
 		return 0;
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+	time1 = sched_clock();
+#endif
 
-	if (rqc)
+	if (rqc) {
 		reqs = mmc_blk_prep_packed_list(mq, rqc);
+#ifdef MTK_BKOPS_IDLE_MAYA
+		if ((card->ext_csd.bkops_en) && (rq_data_dir(rqc) == WRITE))
+			card->bkops_info.sectors_changed += blk_rq_sectors(rqc);
+#endif
+	}
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+	mmcqd_pid = task_pid_nr(current);
 
+	idx = find_mmcqd_index();
+
+	mmcqd_read_clear[idx] = 1;
+	if (mmccid_tag_t1 == 0)
+		mmccid_tag_t1 = time1;
+	t_period = time1 - mmccid_tag_t1;
+	if (t_period >= (unsigned long long)((PRT_TIME_PERIOD)*(unsigned long long)10))
+		mmccid_tag_t1 = time1;
+	if (mmcqd_tag_t1[idx] == 0)
+		mmcqd_tag_t1[idx] = time1;
+	t_period = time1 - mmcqd_tag_t1[idx];
+
+	if (t_period >= (unsigned long long)PRT_TIME_PERIOD) {
+		mmcqd_read_clear[idx] = 2;
+		mmcqd_work_percent[idx] = 1;
+		mmcqd_r_throughput[idx] = 0;
+		mmcqd_w_throughput[idx] = 0;
+		t_usage = mmcqd_t_usage_wr[idx] + mmcqd_t_usage_rd[idx];
+				if (t_period > t_usage*100) {
+					snprintf(block_io_log_source_buffer, WORKLOAD_LOG_LENGTH,
+						"wl:1%%,%lld,%lld,%d.", t_usage, t_period, mmcqd_rq_count[idx]);
+					strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+						WORKLOAD_LOG_LENGTH);
+				} else {
+
+			do_div(t_period, 100);	/*boundary issue*/
+			t_percent = ((unsigned int)t_usage)/((unsigned int)t_period);
+			mmcqd_work_percent[idx] = t_percent;
+					snprintf(block_io_log_source_buffer, WORKLOAD_LOG_LENGTH,
+						"wl:%d%%,%lld,%lld,%d.", t_percent, t_usage,
+						t_period, mmcqd_rq_count[idx]);
+					strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+						WORKLOAD_LOG_LENGTH);
+		}
+		if (mmcqd_wr_rq_count[idx] >= 2) {
+			diversity = mmcqd_wr_offset[idx]/(mmcqd_wr_rq_count[idx]-1);
+					snprintf(block_io_log_source_buffer , WRITE_DIVERSITY_LOG_LENGTH,
+						"wd:%d,%d,%d,%d,%d.", diversity, mmcqd_wr_rq_count[idx],
+						mmcqd_wr_break[idx], mmcqd_wr_tract[idx], mmcqd_wr_bit[idx]);
+					strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+						WRITE_DIVERSITY_LOG_LENGTH);
+
+		}
+		if (mmcqd_rd_rq_count[idx] >= 2) {
+			diversity = mmcqd_rd_offset[idx]/(mmcqd_rd_rq_count[idx]-1);
+					snprintf(block_io_log_source_buffer, READ_DIVERSITY_LOG_LENGTH,
+						"rd:%d,%d,%d,%d,%d.", diversity, mmcqd_rd_rq_count[idx],
+						mmcqd_rd_break[idx], mmcqd_rd_tract[idx], mmcqd_rd_bit[idx]);
+					strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+						READ_DIVERSITY_LOG_LENGTH);
+		}
+		if (mmcqd_t_usage_wr[idx]) {
+			do_div(mmcqd_t_usage_wr[idx], 1000000);	/*boundary issue*/
+			if (mmcqd_t_usage_wr[idx]) {
+				/* discard print if duration will <1ms*/
+				perf_meter = (mmcqd_rq_size_wr[idx])/((unsigned int)mmcqd_t_usage_wr[idx]); /*kb/s*/
+				mmcqd_w_throughput[idx] = perf_meter;
+						snprintf(block_io_log_source_buffer, WRITE_THROUGHPUT_LOG_LENGTH,
+							"wt:%d,%d,%lld.", perf_meter,
+							mmcqd_rq_size_wr[idx], mmcqd_t_usage_wr[idx]);
+						strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+							WRITE_THROUGHPUT_LOG_LENGTH);
+			}
+		}
+		if (mmcqd_t_usage_rd[idx]) {
+			do_div(mmcqd_t_usage_rd[idx], 1000000);	/*boundary issue*/
+			if (mmcqd_t_usage_rd[idx]) {
+				/* discard print if duration will <1ms*/
+				perf_meter = (mmcqd_rq_size_rd[idx])/((unsigned int)mmcqd_t_usage_rd[idx]); /*kb/s*/
+				mmcqd_r_throughput[idx] = perf_meter;
+						snprintf(block_io_log_source_buffer, READ_THROUGHPUT_LOG_LENGTH,
+							"rt:%d,%d,%lld.", perf_meter,
+							mmcqd_rq_size_rd[idx], mmcqd_t_usage_rd[idx]);
+						strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+							READ_THROUGHPUT_LOG_LENGTH);
+			}
+		}
+		mmcqd_tag_t1[idx] = time1;
+		g_var_clear(idx);
+#if defined(FEATURE_STORAGE_VMSTAT_LOGGER)
+				snprintf(block_io_log_source_buffer, VMSTAT_LOG_LENGTH, "vm:%ld,%ld,%ld,%ld,%ld.",
+							((global_page_state(NR_FILE_PAGES)) << (PAGE_SHIFT - 10)),
+							((global_page_state(NR_FILE_DIRTY)) << (PAGE_SHIFT - 10)),
+							((global_page_state(NR_DIRTIED))    << (PAGE_SHIFT - 10)),
+							((global_page_state(NR_WRITEBACK))  << (PAGE_SHIFT - 10)),
+							((global_page_state(NR_WRITTEN))    << (PAGE_SHIFT - 10)));
+				strncat(block_io_log_dst_buffer, block_io_log_source_buffer, VMSTAT_LOG_LENGTH);
+
+#endif
+/*/proc/stat*/
+				user = nice = system = idle = iowait =
+				irq = softirq = 0;
+
+				for_each_possible_cpu(i) {
+					user += kcpustat_cpu(i).cpustat[CPUTIME_USER];
+					nice += kcpustat_cpu(i).cpustat[CPUTIME_NICE];
+					system += kcpustat_cpu(i).cpustat[CPUTIME_SYSTEM];
+					idle += get_idle_time(i);
+					iowait += get_iowait_time(i);
+					irq += kcpustat_cpu(i).cpustat[CPUTIME_IRQ];
+					softirq += kcpustat_cpu(i).cpustat[CPUTIME_SOFTIRQ];
+				}
+				snprintf(block_io_log_source_buffer, CPUSTAT_LOG_LENGTH,
+					"cpu:%llu,%llu,%llu,%llu,%llu,%llu,%llu.",
+							cputime64_to_clock_t(user),
+							cputime64_to_clock_t(nice),
+							cputime64_to_clock_t(system),
+							cputime64_to_clock_t(idle),
+							cputime64_to_clock_t(iowait),
+							cputime64_to_clock_t(irq),
+							cputime64_to_clock_t(softirq));
+				strncat(block_io_log_dst_buffer, block_io_log_source_buffer, CPUSTAT_LOG_LENGTH);
+/*/proc/stat end*/
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+		do {
+			int i;
+
+			for (index = 0; index < PID_ID_CNT; index++) {
+				if (g_pid_logger[index].current_pid != 0 &&
+					g_pid_logger[index].current_pid == mmcqd_pid)
+					break;
+			}
+			if (index == PID_ID_CNT)
+				break;
+			for (i = 0; i < PID_LOGGER_COUNT; i++) {
+				/*printk(KERN_INFO"hank mmcqd %d %d", g_pid_logger[index].pid_logger[i], mmcqd_pid);*/
+				if (g_pid_logger[index].pid_logger[i] == 0)
+					break;
+				sprintf(g_pid_logger[index].pid_buffer+i*37, "{%05d:%05d:%08d:%05d:%08d}",
+						g_pid_logger[index].pid_logger[i],
+						g_pid_logger[index].pid_logger_counter[i],
+						g_pid_logger[index].pid_logger_length[i],
+						g_pid_logger[index].pid_logger_r_counter[i],
+						g_pid_logger[index].pid_logger_r_length[i]);
+
+			}
+			if (i != 0) {
+						snprintf(block_io_log_source_buffer, PID_LOG_LENGTH, "pid:%d,%s.",
+							g_pid_logger[index].current_pid,
+							g_pid_logger[index].pid_buffer);
+						strncat(block_io_log_dst_buffer, block_io_log_source_buffer,
+							PID_LOG_LENGTH);
+				memset(&(g_pid_logger[index].pid_logger), 0, sizeof(unsigned short)*PID_LOGGER_COUNT);
+				memset(&(g_pid_logger[index].pid_logger_counter), 0,
+					sizeof(unsigned short)*PID_LOGGER_COUNT);
+				memset(&(g_pid_logger[index].pid_logger_length), 0,
+					sizeof(unsigned int)*PID_LOGGER_COUNT);
+				memset(&(g_pid_logger[index].pid_logger_r_counter), 0,
+					sizeof(unsigned short)*PID_LOGGER_COUNT);
+				memset(&(g_pid_logger[index].pid_logger_r_length), 0,
+					sizeof(unsigned int)*PID_LOGGER_COUNT);
+				memset(&(g_pid_logger[index].pid_buffer), 0, sizeof(char)*PID_BUFFER_SIZE);
+#if defined(CONFIG_MTK_MORE_PID_LOGGER_COUNT)
+				g_pid_logger[index].reserved = 0;
+#endif
+			}
+			g_pid_logger[index].pid_buffer[0] = '\0';
+
+		} while (0);
+#endif
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+				pr_debug("[BLOCK_TAG] mmcqd:%d %s\n", mmcqd[idx], block_io_log_dst_buffer);
+			if (stopringlog == 0) {
+				memset(&(block_io_ring[block_io_ring_index].block_io_log_debugfs), 0,
+					sizeof(char)*BLOCK_IO_BUFFER_SIZE);
+			    time = get_current_time_us();
+				rem_nsec = do_div(time, 1000000000);
+				snprintf((block_io_ring[block_io_ring_index].block_io_log_debugfs),
+					BLOCK_IO_BUFFER_SIZE, "\n[%5lu.%06lu]q:%d.%s",
+					(unsigned long)time, rem_nsec / 1000, idx, block_io_log_dst_buffer);
+				block_io_ring_index++;
+				block_io_ring_index = block_io_ring_index%MAX_BLOCK_IO_LOG_COUNT;
+			}
+				memset(block_io_log_dst_buffer, 0, BLOCK_IO_BUFFER_SIZE);
+				memset(block_io_log_source_buffer, 0, PID_LOG_LENGTH);
+#endif
+
+			}
+		if (rqc) {
+
+			rq_byte = blk_rq_bytes(rqc);
+			rq_sector = blk_rq_sectors(rqc);
+			if (rq_data_dir(rqc) == WRITE) {
+
+				if (mmcqd_wr_offset_tag[idx] > 0) {
+
+					sect_offset = abs(blk_rq_pos(rqc) - mmcqd_wr_offset_tag[idx]);
+					mmcqd_wr_offset[idx] += sect_offset;
+					if (sect_offset == 1)
+						mmcqd_wr_break[idx]++;
+				}
+				mmcqd_wr_offset_tag[idx] = blk_rq_pos(rqc) + rq_sector;
+				if (rq_sector <= 1)/*512 bytes*/
+					mmcqd_wr_bit[idx]++;
+				else if (rq_sector >= 1016)/*508kB*/
+					mmcqd_wr_tract[idx]++;
+			} else {/*read*/
+
+				if (mmcqd_rd_offset_tag[idx] > 0) {
+
+					sect_offset = abs(blk_rq_pos(rqc) - mmcqd_rd_offset_tag[idx]);
+					mmcqd_rd_offset[idx] += sect_offset;
+					if (sect_offset == 1)
+						mmcqd_rd_break[idx]++;
+				}
+				mmcqd_rd_offset_tag[idx] = blk_rq_pos(rqc) + rq_sector;
+				if (rq_sector <= 1)/*512 bytes*/
+					mmcqd_rd_bit[idx]++;
+				else if (rq_sector >= 1016)/*508kB*/
+					mmcqd_rd_tract[idx]++;
+			}
+		}
+#endif
 	do {
 		if (rqc) {
 			/*
@@ -2027,9 +2855,19 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	unsigned long flags;
 	unsigned int cmd_flags = req ? req->cmd_flags : 0;
 
-	if (req && !mq->mqrq_prev->req)
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	if (mmc_bus_needs_resume(card->host))
+		mmc_resume_bus(card->host);
+#endif
+
+	if (req && !mq->mqrq_prev->req) {
 		/* claim host only for the first request */
 		mmc_get_card(card);
+#ifdef MTK_BKOPS_IDLE_MAYA
+		if (card->ext_csd.bkops_en)
+			mmc_stop_bkops(card);
+#endif
+	}
 
 	ret = mmc_blk_part_switch(card, md);
 	if (ret) {
@@ -2065,7 +2903,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 
 out:
 	if ((!req && !(mq->flags & MMC_QUEUE_NEW_REQUEST)) ||
-	     (cmd_flags & MMC_REQ_SPECIAL_MASK))
+	     (cmd_flags & MMC_REQ_SPECIAL_MASK)) {
 		/*
 		 * Release host when there are no more requests
 		 * and after special request(discard, flush) is done.
@@ -2073,6 +2911,11 @@ out:
 		 * the 'mmc_blk_issue_rq' with 'mqrq_prev->req'.
 		 */
 		mmc_put_card(card);
+#ifdef MTK_BKOPS_IDLE_MAYA
+		if (mmc_card_need_bkops(card))
+			mmc_start_bkops(card, false);
+#endif
+	}
 	return ret;
 }
 
@@ -2091,6 +2934,10 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 {
 	struct mmc_blk_data *md;
 	int devidx, ret;
+
+#ifdef MTK_BKOPS_IDLE_MAYA
+	unsigned int percentage = BKOPS_SIZE_PERCENTAGE_TO_QUEUE_DELAYED_WORK;
+#endif
 
 	devidx = find_first_zero_bit(dev_use, max_devices);
 	if (devidx >= max_devices)
@@ -2137,6 +2984,24 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	ret = mmc_init_queue(&md->queue, card, &md->lock, subname);
 	if (ret)
 		goto err_putdisk;
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	if (!page_logger) {
+		unsigned long count = system_dram_size >> PAGE_SHIFT;
+#ifdef CONFIG_MTK_EXTMEM
+		page_logger = extmem_malloc_page_align(count * sizeof(struct page_pid_logger));
+#else
+		page_logger = vmalloc(count * sizeof(struct page_pid_logger));
+#endif
+		if (page_logger)
+			memset(page_logger, -1, count*sizeof(struct page_pid_logger));
+		else
+			pr_debug("page_logger malloc fail\n");
+		spin_lock_init(&g_locker);
+	}
+#endif
+#if defined(FEATURE_STORAGE_META_LOG)
+	check_perdev_minors = perdev_minors;
+#endif
 
 	md->queue.issue_fn = mmc_blk_issue_rq;
 	md->queue.data = md;
@@ -2148,6 +3013,7 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	md->disk->queue = md->queue.queue;
 	md->disk->driverfs_dev = parent;
 	set_disk_ro(md->disk, md->read_only || default_ro);
+	md->disk->flags = GENHD_FL_EXT_DEVT;
 	if (area_type & (MMC_BLK_DATA_AREA_RPMB | MMC_BLK_DATA_AREA_BOOT))
 		md->disk->flags |= GENHD_FL_NO_PART_SCAN;
 
@@ -2173,11 +3039,16 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 		blk_queue_logical_block_size(md->queue.queue, 512);
 
 	set_capacity(md->disk, size);
-
+#ifdef MTK_BKOPS_IDLE_MAYA
+	card->bkops_info.size_percentage_to_queue_delayed_work = percentage;
+	card->bkops_info.min_sectors_to_queue_delayed_work =
+		((unsigned int)size * percentage) / 100;
+#endif
 	if (mmc_host_cmd23(card->host)) {
 		if (mmc_card_mmc(card) ||
 		    (mmc_card_sd(card) &&
-		     card->scr.cmds & SD_SCR_CMD23_SUPPORT))
+		     card->scr.cmds & SD_SCR_CMD23_SUPPORT &&
+		     mmc_card_uhs(card)))
 			md->flags |= MMC_BLK_CMD23;
 	}
 
@@ -2362,8 +3233,23 @@ static int mmc_add_disk(struct mmc_blk_data *md)
 		if (ret)
 			goto power_ro_lock_fail;
 	}
+#ifdef MTK_BKOPS_IDLE_MAYA
+	md->bkops_check_threshold.show = bkops_check_threshold_show;
+	md->bkops_check_threshold.store = bkops_check_threshold_store;
+	sysfs_attr_init(&md->bkops_check_threshold.attr);
+	md->bkops_check_threshold.attr.name = "bkops_check_threshold";
+	md->bkops_check_threshold.attr.mode = S_IRUGO | S_IWUSR;
+	ret = device_create_file(disk_to_dev(md->disk),
+				 &md->bkops_check_threshold);
+	if (ret)
+		goto bkops_check_threshold_fails;
+#endif
 	return ret;
 
+#ifdef MTK_BKOPS_IDLE_MAYA
+bkops_check_threshold_fails:
+	device_remove_file(disk_to_dev(md->disk), &md->power_ro_lock);
+#endif
 power_ro_lock_fail:
 	device_remove_file(disk_to_dev(md->disk), &md->force_ro);
 force_ro_fail:
@@ -2376,6 +3262,7 @@ force_ro_fail:
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15
+#define CID_MANFID_SANDISK_EMMC	0x45
 
 static const struct mmc_fixup blk_fixups[] =
 {
@@ -2434,6 +3321,33 @@ static const struct mmc_fixup blk_fixups[] =
 	MMC_FIXUP("VZL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
 
+#ifdef CONFIG_MTK_EMMC_CACHE
+	/*
+	 * Some MMC cards cache feature, cannot flush the previous
+	 * cache data by force programming or reliable write
+	 * which cannot gurrantee the strong order betwee meta data and file data.
+	 */
+
+	/*
+	 * Toshiba eMMC after enable cache feature, write performance drop,
+	 * because flush operation waste much time
+	 */
+	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_TOSHIBA, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_DISABLE_CACHE),
+
+	/*
+	 * Samsung eMMC after enable cache feature, command will timeout in some condition
+	 */
+	MMC_FIXUP("FJ27MB", CID_MANFID_SAMSUNG, 0x100, add_quirk_mmc,
+		  MMC_QUIRK_DISABLE_CACHE),
+	MMC_FIXUP("FJ25AB", CID_MANFID_SAMSUNG, 0x100, add_quirk_mmc,
+		  MMC_QUIRK_DISABLE_CACHE),
+#endif
+
+	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_SANDISK_EMMC, CID_OEMID_ANY, add_quirk_mmc,
+		MMC_QUIRK_DISABLE_SNO),
+
+
 	END_FIXUP
 };
 
@@ -2465,6 +3379,11 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 	mmc_set_drvdata(card, md);
 
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+        /*applying only MMC TYPE, need more time to verify SD TYPE*/
+        if (card && mmc_card_mmc(card))
+		mmc_set_bus_resume_policy(card->host, 1);
+#endif
 	if (mmc_add_disk(md))
 		goto out;
 
@@ -2484,6 +3403,9 @@ static int mmc_blk_probe(struct mmc_card *card)
 		pm_runtime_set_active(&card->dev);
 		pm_runtime_enable(&card->dev);
 	}
+
+	if (card)
+		mmc_card_debug_log_sysfs_init(card);
 
 	return 0;
 
@@ -2507,31 +3429,48 @@ static void mmc_blk_remove(struct mmc_card *card)
 	pm_runtime_put_noidle(&card->dev);
 	mmc_blk_remove_req(md);
 	mmc_set_drvdata(card, NULL);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	mmc_set_bus_resume_policy(card->host, 0);
+#endif
 }
 
-static int _mmc_blk_suspend(struct mmc_card *card)
+static int _mmc_blk_suspend(struct mmc_card *card, bool wait)
 {
 	struct mmc_blk_data *part_md;
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
+	int rc = 0;
 
 	if (md) {
-		mmc_queue_suspend(&md->queue);
+		rc = mmc_queue_suspend(&md->queue, wait);
+		if (rc)
+			goto out;
 		list_for_each_entry(part_md, &md->part, part) {
-			mmc_queue_suspend(&part_md->queue);
+			rc = mmc_queue_suspend(&part_md->queue, wait);
+			if (rc)
+				goto out_resume;
 		}
 	}
-	return 0;
+	goto out;
+
+out_resume:
+	mmc_queue_resume(&md->queue);
+	list_for_each_entry(part_md, &md->part, part) {
+		mmc_queue_resume(&part_md->queue);
+	}
+out:
+	return rc;
 }
 
 static void mmc_blk_shutdown(struct mmc_card *card)
 {
-	_mmc_blk_suspend(card);
+
+	_mmc_blk_suspend(card, 1);
 }
 
 #ifdef CONFIG_PM
 static int mmc_blk_suspend(struct mmc_card *card)
 {
-	return _mmc_blk_suspend(card);
+	return _mmc_blk_suspend(card, 0);
 }
 
 static int mmc_blk_resume(struct mmc_card *card)
@@ -2584,6 +3523,9 @@ static int __init mmc_blk_init(void)
 	res = mmc_register_driver(&mmc_driver);
 	if (res)
 		goto out2;
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+	block_io_dbg_Init();
+#endif
 
 	return 0;
  out2:
@@ -2596,6 +3538,9 @@ static void __exit mmc_blk_exit(void)
 {
 	mmc_unregister_driver(&mmc_driver);
 	unregister_blkdev(MMC_BLOCK_MAJOR, "mmc");
+#if defined(FEATURE_STORAGE_PERF_INDEX)
+	block_io_dbg_deinit();
+#endif
 }
 
 module_init(mmc_blk_init);

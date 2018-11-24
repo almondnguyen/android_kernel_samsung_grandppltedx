@@ -505,6 +505,31 @@ config LEDS_VERSATILE
 	  This option enabled support for the LEDs on the ARM Versatile
 	  and RealView boards. Say Y to enabled these.
 
+config FLASHLIGHT
+	bool "Flashlight Support"
+	help
+	  This option enables the led sysfs class in /sys/class/flashlight.
+
+config SM_FLASH_LED
+	tristate "Siliconmitus flash LED driver support"
+	depends on FLASHLIGHT
+	help
+	  Say Y here to enable Siliconmitus's flash LED driver HAL architecture
+
+config LEDS_S2MU005_FLASH
+	tristate "Siliconmitus S2MU005 flash LED driver"
+	depends on SM_FLASH_LED
+	help
+	  A driver for Siliconmitus S2MU005 flash LED
+	  This option enables support for the LEDs on the S2MU005.
+
+config GET_REAR_MODULE_ID
+	tristate "LED support for Rear Camera Module ID from eeprom"
+	depends on SM_FLASH_LED
+	help
+	  This option enable support to get module ID 10bytes from eeprom 0x50
+	  Get access to module ID through rear_cam_moduleid sysfs
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 

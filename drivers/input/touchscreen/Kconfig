@@ -962,4 +962,6 @@ config TOUCHSCREEN_ZFORCE
 	  To compile this driver as a module, choose M here: the
 	  module will be called zforce_ts.
 
+source "drivers/input/touchscreen/melfas/Kconfig"
+source "drivers/input/touchscreen/bt541/Kconfig"
 endif

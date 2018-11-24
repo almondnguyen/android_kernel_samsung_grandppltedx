@@ -69,6 +69,7 @@ void kernel_restart_prepare(char *cmd)
 {
 	blocking_notifier_call_chain(&reboot_notifier_list, SYS_RESTART, cmd);
 	system_state = SYSTEM_RESTART;
+	freeze_processes();
 	usermodehelper_disable();
 	device_shutdown();
 }
@@ -230,6 +231,7 @@ static void kernel_shutdown_prepare(enum system_states state)
 	blocking_notifier_call_chain(&reboot_notifier_list,
 		(state == SYSTEM_HALT) ? SYS_HALT : SYS_POWER_OFF, NULL);
 	system_state = state;
+	freeze_processes();
 	usermodehelper_disable();
 	device_shutdown();
 }
@@ -444,6 +446,58 @@ int orderly_poweroff(bool force)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(orderly_poweroff);
+
+char reboot_cmd[POWEROFF_CMD_PATH_LEN] = "/system/bin/reboot";
+
+static int __orderly_reboot(bool force)
+{
+	char **argv;
+	static const char const *envp[] = {
+		"HOME=/",
+		"PATH=/sbin:/bin:/usr/sbin:/usr/bin",
+		NULL
+	};
+	int ret;
+
+	argv = argv_split(GFP_KERNEL, reboot_cmd, NULL);
+	if (argv) {
+		ret = call_usermodehelper(argv[0], argv, (char **)envp, UMH_WAIT_EXEC);
+		argv_free(argv);
+	} else {
+		ret = -ENOMEM;
+	}
+
+	if (ret && force) {
+		pr_warn("Failed to start orderly reboot: forcing the issue\n");
+		emergency_sync();
+		kernel_restart(NULL);
+	}
+
+	return ret;
+}
+
+static void reboot_work_func(struct work_struct *work)
+{
+	__orderly_reboot(reboot_force);
+}
+
+static DECLARE_WORK(reboot_work, reboot_work_func);
+
+/**
+ * orderly_reboot - Trigger an orderly system reboot
+ * @force: force reboot if command execution fails
+ *
+ * This may be called from any context to trigger a system reboot.
+ * If the orderly reboot fails, it will force an immediate reboot.
+ */
+int orderly_reboot(bool force)
+{
+	if (force) /* do not override the pending "true" */
+		reboot_force = 1;
+	schedule_work(&reboot_work);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(orderly_reboot);
 
 static int __init reboot_setup(char *str)
 {

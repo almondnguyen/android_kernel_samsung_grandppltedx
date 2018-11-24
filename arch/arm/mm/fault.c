@@ -25,9 +25,12 @@
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
+#include <mt-plat/mtk_hooks.h>
 
 #include "fault.h"
-
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
 #ifdef CONFIG_MMU
 
 #ifdef CONFIG_KPROBES
@@ -142,6 +145,9 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 	 * No handler, we'll have to terminate things with extreme prejudice.
 	 */
 	bust_spinlocks(1);
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_store_fault_addr(addr, regs);
+#endif
 	printk(KERN_ALERT
 		"Unable to handle kernel %s at virtual address %08lx\n",
 		(addr < PAGE_SIZE) ? "NULL pointer dereference" :
@@ -163,6 +169,10 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		struct pt_regs *regs)
 {
 	struct siginfo si;
+
+	if (mem_fault_debug_hook)
+		if (!mem_fault_debug_hook(regs))
+			return;
 
 #ifdef CONFIG_DEBUG_USER
 	if (((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
@@ -274,10 +284,10 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		local_irq_enable();
 
 	/*
-	 * If we're in an interrupt or have no user
+	 * If we're in an interrupt, or have no irqs, or have no user
 	 * context, we must not take the fault..
 	 */
-	if (in_atomic() || !mm)
+	if (in_atomic() || irqs_disabled() || !mm)
 		goto no_context;
 
 	if (user_mode(regs))
@@ -550,7 +560,9 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 
 	if (!inf->fn(addr, fsr & ~FSR_LNX_PF, regs))
 		return;
-
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_store_fault_addr(addr, regs);
+#endif
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
 

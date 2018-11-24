@@ -17,6 +17,7 @@ obj-$(CONFIG_LCD_S6E63M0)		+= s6e63m0.o
 obj-$(CONFIG_LCD_TDO24M)		+= tdo24m.o
 obj-$(CONFIG_LCD_TOSA)			+= tosa_lcd.o
 obj-$(CONFIG_LCD_VGG2432A4)		+= vgg2432a4.o
+obj-$(CONFIG_LCD_GENERIC)       	+= gen_panel/
 
 obj-$(CONFIG_BACKLIGHT_88PM860X)	+= 88pm860x_bl.o
 obj-$(CONFIG_BACKLIGHT_AAT2870)		+= aat2870_bl.o
@@ -53,3 +54,4 @@ obj-$(CONFIG_BACKLIGHT_SAHARA)		+= kb3886_bl.o
 obj-$(CONFIG_BACKLIGHT_TOSA)		+= tosa_bl.o
 obj-$(CONFIG_BACKLIGHT_TPS65217)	+= tps65217_bl.o
 obj-$(CONFIG_BACKLIGHT_WM831X)		+= wm831x_bl.o
+obj-$(CONFIG_BACKLIGHT_KTD3102)		+= ktd3102_bl.o

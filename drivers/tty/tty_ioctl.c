@@ -24,7 +24,7 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
-#undef TTY_DEBUG_WAIT_UNTIL_SENT
+#define TTY_DEBUG_WAIT_UNTIL_SENT
 
 #undef	DEBUG
 
@@ -213,7 +213,8 @@ void tty_wait_until_sent(struct tty_struct *tty, long timeout)
 #ifdef TTY_DEBUG_WAIT_UNTIL_SENT
 	char buf[64];
 
-	printk(KERN_DEBUG "%s wait until sent...\n", tty_name(tty, buf));
+	printk(KERN_ERR "%s wait until sent, %d bytes pending...\n",
+		tty_name(tty, buf), tty_chars_in_buffer(tty));
 #endif
 	if (!timeout)
 		timeout = MAX_SCHEDULE_TIMEOUT;

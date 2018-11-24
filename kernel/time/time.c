@@ -41,6 +41,7 @@
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 
+#include <mt-plat/mt_ccci_common.h>
 #include "timeconst.h"
 #include "timekeeping.h"
 
@@ -180,6 +181,7 @@ int do_sys_settimeofday(const struct timespec *tv, const struct timezone *tz)
 			if (!tv)
 				warp_clock();
 		}
+		notify_time_update();
 	}
 	if (tv)
 		return do_settimeofday(tv);

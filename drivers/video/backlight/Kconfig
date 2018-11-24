@@ -151,6 +151,18 @@ config LCD_HX8357
 endif # LCD_CLASS_DEVICE
 
 #
+# GENERIC PANEL
+#
+config LCD_GENERIC
+	bool "GENERIC PANEL support"
+	help
+		Enable this to be able to choose the drivers for controlling the 
+		TFT-LCD and AMOLED on some platforms. This driver adds support for 
+		easy control of lcd, backlight, mdnie and tuning thru device tree.
+
+source "drivers/video/backlight/gen_panel/Kconfig"
+
+#
 # Backlight
 #
 config BACKLIGHT_CLASS_DEVICE
@@ -441,6 +453,13 @@ config BACKLIGHT_BD6107
 	depends on I2C
 	help
 	  If you have a Rohm BD6107 say Y to enable the backlight driver.
+
+config BACKLIGHT_KTD3102
+	tristate "Backlight driver for KTD3012"
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  If you have a backlight driven by a KTD3012, say Y here to
+	  enable its driver.
 
 endif # BACKLIGHT_CLASS_DEVICE
 
