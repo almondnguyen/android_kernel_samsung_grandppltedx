@@ -99,3 +99,5 @@ all.config
 
 # Output obj files
 output
+*.zip
+scripts/dtbTool
