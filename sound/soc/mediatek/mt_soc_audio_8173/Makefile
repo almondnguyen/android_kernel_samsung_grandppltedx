@@ -1,8 +1,8 @@
 MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
-subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include
-subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
-subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat
-subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)
+subdir-ccflags-y +=  -I$(srctree)/drivers/misc/mediatek/include
+subdir-ccflags-y +=  -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
+subdir-ccflags-y +=  -I$(srctree)/drivers/misc/mediatek/include/mt-plat
+subdir-ccflags-y +=  -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)
 
 snd-soc-mt8173-pcm-objs := \
     mt_afe_reg.o mt_afe_clk.o mt_afe_control.o mt_afe_connection.o mt_afe_debug.o \

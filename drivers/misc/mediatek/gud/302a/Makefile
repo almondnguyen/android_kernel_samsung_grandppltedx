@@ -1,4 +1,4 @@
-#ccflags-y += -Werror
+#ccflags-y += 
 
 ifeq ($(CONFIG_ARM64), y)
 obj-$(CONFIG_TRUSTONIC_TEE_SUPPORT) += gud/

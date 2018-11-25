@@ -26,8 +26,8 @@ if '-std=c89' in drm_env['CFLAGS']:
 	drm_env['CFLAGS'].remove('-std=c89')
 
 # X11 generates a lot of warnings
-if '-Werror' in drm_env['CCFLAGS']:
-	drm_env['CCFLAGS'].remove('-Werror')
+if '' in drm_env['CCFLAGS']:
+	drm_env['CCFLAGS'].remove('')
 
 #remove the 'lib'prefix
 drm_env['LIBPREFIX'] = ''

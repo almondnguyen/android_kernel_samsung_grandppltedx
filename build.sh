@@ -102,7 +102,7 @@ function main() {
 	read -p "Please specify Toolchain path: " tcpath;
 	if [ "${tcpath}" == "" ]; then
 		echo -e "$red"
-		export CROSS_COMPILE=$(pwd)/arm-eabi-4.8/bin/arm-eabi-;
+		export CROSS_COMPILE=$(pwd)/linaro-6.2/bin/arm-eabi-;
 		echo -e "No toolchain path found. Using default local one:$nocol ${CROSS_COMPILE}";
 	else
 		export CROSS_COMPILE=${tcpath};
@@ -112,7 +112,7 @@ function main() {
 	if [ "${USE_CCACHE}" == "1" ]; then
 		CCACHE_PATH=/usr/local/bin/ccache;
 		export CROSS_COMPILE="${CCACHE_PATH} ${CROSS_COMPILE}";
-		export JOBS=4;
+		export JOBS=8;
 		echo -e "$red";
 		echo -e "You have enabled ccache through *export USE_CCACHE=1*, now using ccache...$nocol";
 	fi;

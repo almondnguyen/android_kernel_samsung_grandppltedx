@@ -11,7 +11,7 @@
 # GNU General Public License for more details.
 #
 
-#ccflags-y += -Werror
+#ccflags-y += 
 
 ifeq ($(CONFIG_MTK_GPU_R5P0),y)
 $(info GPU BUILD r5p0)

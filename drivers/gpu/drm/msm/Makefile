@@ -1,6 +1,6 @@
 ccflags-y := -Iinclude/drm -Idrivers/gpu/drm/msm
 ifeq (, $(findstring -W,$(EXTRA_CFLAGS)))
-	ccflags-y += -Werror
+	ccflags-y += 
 endif
 
 msm-y := \
