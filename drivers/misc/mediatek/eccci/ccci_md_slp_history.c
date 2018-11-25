@@ -25,6 +25,7 @@
 #include <linux/ktime.h>
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
+#include <asm/div64.h>
 #include <mt-plat/mt_ccci_common.h>
 #include "ccci_config.h"
 
@@ -189,6 +190,12 @@ static void parsing_raw_data(struct ccci_md_slp_proc_ctlb *user_info,
 	*end_t = prev->tik_num;
 }
 
+static unsigned long divide_by_base(unsigned long long a, unsigned long long base)
+{
+	do_div(a, base);
+	return a;
+}
+
 static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
 	struct ccci_md_slp_proc_ctlb *user_info;
@@ -231,7 +238,7 @@ static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size
 		/***********************************************/
 		ll_tmp1 = local_clock();
 		ll_tmp2 = ll_tmp1;
-		usec1 = do_div(ll_tmp1, 1000000000);
+		usec1 = divide_by_base(ll_tmp1, 1000000000);
 		ret =  snprintf(&user_info->tmp_buff[update], MD_SLP_TMP_BUF_SIZE - update,
 				"Start : %llu, %lu.%06lusec\n\n", ll_tmp2, (unsigned long)ll_tmp1, usec1 / 1000);
 		if (ret > 0)
@@ -248,10 +255,10 @@ static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size
 		ll_tmp3 = sleep_tick + awake_tick;
 		ll_tmp1 = sleep_tick*100000000;
 		ll_tmp2 = awake_tick*100000000;
-		usec1 = do_div(ll_tmp1, ll_tmp3);
-		usec1 = do_div(ll_tmp1, 1000000);
-		usec2 = do_div(ll_tmp2, ll_tmp3);
-		usec2 = do_div(ll_tmp2, 1000000);
+		usec1 = divide_by_base(ll_tmp1, ll_tmp3);
+		usec1 = divide_by_base(ll_tmp1, 1000000);
+		usec2 = divide_by_base(ll_tmp2, ll_tmp3);
+		usec2 = divide_by_base(ll_tmp2, 1000000);
 
 		ret =  snprintf(&user_info->tmp_buff[update], MD_SLP_TMP_BUF_SIZE - update,
 				"Time Sleep : %llu\nTime Awake : %llu\nSleep : %llu.%06lu%% Awake : %llu.%06lu%%\n",
@@ -263,8 +270,8 @@ static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size
 		ll_tmp1 = ll_tmp1*MD_TICK_BASE;
 		ll_tmp2 = end_tick;
 		ll_tmp2 = ll_tmp2*MD_TICK_BASE;
-		usec1 = do_div(ll_tmp1, 1000000);
-		usec2 = do_div(ll_tmp2, 1000000);
+		usec1 = divide_by_base(ll_tmp1, 1000000);
+		usec2 = divide_by_base(ll_tmp2, 1000000);
 		ret = snprintf(&user_info->tmp_buff[update], MD_SLP_TMP_BUF_SIZE - update,
 				"Log available %llu ~ %llusec\n", ll_tmp1, ll_tmp2);
 		if (ret > 0)
@@ -325,8 +332,8 @@ static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size
 			ll_tmp1 = ll_tmp2 + 0xFFFFFFFF + 1 - ll_tmp1;
 		else
 			ll_tmp1 = ll_tmp2 - ll_tmp1;
-		usec1 = do_div(ll_tmp1, 1000000); /* delta */
-		usec2 = do_div(ll_tmp2, 1000000); /* Time from tick */
+		usec1 = divide_by_base(ll_tmp1, 1000000); /* delta */
+		usec2 = divide_by_base(ll_tmp2, 1000000); /* Time from tick */
 		if (tmp_info & (1<<31))
 			ch = 'S';
 		else
@@ -350,7 +357,7 @@ static ssize_t ccci_md_slp_read(struct file *file, char __user *buf, size_t size
 		if ((size > MD_SLP_ONE_LINE_SIZE) && (record_num == 0)) { /* Means all data out */
 			ll_tmp1 = local_clock();
 			ll_tmp2 = ll_tmp1;
-			usec1 = do_div(ll_tmp1, 1000000000);
+			usec1 = divide_by_base(ll_tmp1, 1000000000);
 			ret =  snprintf(user_info->tmp_buff, MD_SLP_TMP_BUF_SIZE,
 					"\nEnd : %llu, %lu.%06lusec\n\n", ll_tmp2,
 					(unsigned long)ll_tmp1, usec1 / 1000);
