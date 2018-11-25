@@ -42,7 +42,7 @@ obj-$(CONFIG_MTK_FB) += 			\
 				fbconfig_kdebug.o
 
 ifeq (y, $(filter y, $(CONFIG_ARCH_MT6735) $(CONFIG_ARCH_MT6735M) $(CONFIG_ARCH_MT6753) $(CONFIG_ARCH_MT6580)))
-obj-$(CONFIG_MTK_FB) += mtkfb.o
+obj-$(CONFIG_MTK_FB) += mtkfb.o lcd_notify.o
 endif
 
 ifeq (y, $(filter y, $(CONFIG_ARCH_MT6797)))

@@ -43,6 +43,10 @@
 #include <linux/of_gpio.h>
 #include <linux/power_supply.h>
 
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+#include <linux/input/doubletap2wake.h>
+#endif
+
 /* sec config */
 #define TSP_VERBOSE_DEBUG
 #define CONFIG_SEC_FACTORY_TEST
@@ -3333,6 +3337,7 @@ static void bt541_ts_late_resume(struct early_suspend *h)
 
 	if (info == NULL)
 		return;
+
 	input_info(true, &info->client->dev, "late resume++\r\n");
 
 	down(&info->work_lock);
@@ -3459,6 +3464,13 @@ static int bt541_ts_open(struct input_dev *dev)
 	struct i2c_client *client = info->client;
 	struct capa_info *cap = &(info->cap_info);
 
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+	if (dt2w_switch > 0) {
+		pr_info("%s: DT2W turned on!", __FUNCTION__);
+		return;
+	}
+#endif
+
 	if(info->enabled == true) {
 		input_err(true, &client->dev, "%s already open\n", __func__);
 		return 0;
@@ -3521,6 +3533,14 @@ static void bt541_ts_close(struct input_dev *dev)
 {
 	struct bt541_ts_info *info = input_get_drvdata(dev);
 	struct i2c_client *client = info->client;
+
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+	if (dt2w_switch > 0) {
+		pr_info("%s: DT2W turned on! Clearing input points...", __FUNCTION__);
+		clear_report_data(info);
+		return;
+	}
+#endif
 
 	if(info->enabled == false) {
 		input_err(true, &client->dev, "%s already suspended\n", __func__);
@@ -6629,7 +6649,11 @@ static int bt541_ts_probe(struct i2c_client *client,
 #endif
 #endif
 	ret = request_threaded_irq(info->irq, NULL, bt541_touch_work,
-			IRQF_TRIGGER_FALLING | IRQF_ONESHOT , BT541_TS_DEVICE, info);
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT
+#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
+			| IRQF_NO_SUSPEND
+#endif
+			,BT541_TS_DEVICE, info);
 
 	if (ret) {
 		input_err(true, &client->dev, "unable to register irq.(%s)\n",
