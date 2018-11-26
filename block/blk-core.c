@@ -283,6 +283,8 @@ EXPORT_SYMBOL(blk_sync_queue);
  */
 inline void __blk_run_queue_uncond(struct request_queue *q)
 {
+	struct blk_flush_queue *fq = blk_get_flush_queue(q, NULL);
+
 	if (unlikely(blk_queue_dead(q)))
 		return;
 
@@ -298,7 +300,7 @@ inline void __blk_run_queue_uncond(struct request_queue *q)
 		q->elevator->type->ops.elevator_is_urgent_fn &&
 		q->urgent_request_fn &&
 		q->elevator->type->ops.elevator_is_urgent_fn(q) &&
-		list_empty(&q->flush_data_in_flight)) {
+		list_empty(&fq->flush_data_in_flight)) {
 		q->notified_urgent = true;
 		q->urgent_request_fn(q);
 	} else
