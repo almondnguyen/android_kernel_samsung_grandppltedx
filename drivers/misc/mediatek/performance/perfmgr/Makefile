@@ -14,7 +14,7 @@
 obj-y += perfmgr_main.o perfmgr_boost_api.o
 
 ifneq ($(wildcard $(srctree)/drivers/misc/mediatek/performance/perfmgr/$(MTK_PLATFORM)/),)
-ccflags-y += -DMTK_BOOST_SUPPORT
+#ccflags-y += -DMTK_BOOST_SUPPORT
 obj-y += $(MTK_PLATFORM)/
 endif
 
