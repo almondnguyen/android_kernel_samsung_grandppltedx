@@ -33,5 +33,9 @@ for i in $(busybox seq ${num_cpu}); do
 	swapon -p 05 /dev/block/zram${num};
 done;
 
-# Set maximum swappiness
-echo 130 > /proc/sys/vm/swappiness;
+# Enable zswap after zram is done
+echo "30" > /sys/module/zswap/parameters/max_pool_percent;
+echo "1" > /sys/module/zswap/parameters/enabled;
+
+# Set maximum swappiness (no longer using Samsung's hacky trick)
+echo 100 > /proc/sys/vm/swappiness;
