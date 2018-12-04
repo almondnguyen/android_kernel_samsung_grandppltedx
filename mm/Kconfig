@@ -601,6 +601,16 @@ config PGTABLE_MAPPING
 	  You can check speed with zsmalloc benchmark:
 	  https://github.com/spartacus06/zsmapbench
 
+config SWAP_ENABLE_READAHEAD
+	bool "Enable readahead on page swap in"
+	depends on SWAP
+	default n
+	help
+	  When a page fault occurs, adjacent pages of SWAP_CLUSTER_MAX are
+	  also paged in expecting those pages will be used in near future.
+	  This behaviour is good at disk-based system, but not on in-memory
+	  compression (e.g. zram).
+
 config GENERIC_EARLY_IOREMAP
 	bool
 
