@@ -834,10 +834,10 @@ static struct mt_cpu_freq_info opp_tbl_e1_2[] = {
 	OP(CPU_DVFS_FREQ8, 95000),
 };
 
-/* CPU LEVEL 3, 1.45GHz segment */
+/* CPU LEVEL 3, 1.5GHz segment */
 static struct mt_cpu_freq_info opp_tbl_e1_3[] = {
 #ifdef CONFIG_MTK_TC10_FEATURE
-	OP(CPU_DVFS_FREQ0_1, 125000),
+	OP(CPU_DVFS_FREQ0,  125000),
 	OP(CPU_DVFS_FREQ1,  123125),
 	OP(CPU_DVFS_FREQ3,  120625),
 	OP(CPU_DVFS_FREQ4,  115000),
@@ -846,7 +846,7 @@ static struct mt_cpu_freq_info opp_tbl_e1_3[] = {
 	OP(CPU_DVFS_FREQ6,  105000),
 	OP(CPU_DVFS_FREQ8,  95000),
 #else
-	OP(CPU_DVFS_FREQ0_1,125000),
+	OP(CPU_DVFS_FREQ0,  125000),
 	OP(CPU_DVFS_FREQ1,  123125),
 	OP(CPU_DVFS_FREQ3,  120625),
 	OP(CPU_DVFS_FREQ4,  115000),
