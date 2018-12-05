@@ -55,9 +55,9 @@ function build() {
 	echo -e "$red";
 	echo -e "Building kernel...$nocol";
 	make O=output -j${JOBS};
-	make O=output -j${JOBS} dtbs;
-	gcc -o ${KERNEL_PATH}/scripts/dtbTool ${KERNEL_PATH}/scripts/dtbtool.c
-	./scripts/dtbTool -o ${DT_IMG} -s 2048 $(pwd)/output/arch/arm/boot/
+	#make O=output -j${JOBS} dtbs;
+	#gcc -o ${KERNEL_PATH}/scripts/dtbTool ${KERNEL_PATH}/scripts/dtbtool.c
+	#./scripts/dtbTool -o ${DT_IMG} -s 2048 $(pwd)/output/arch/arm/boot/
 	find ${KERNEL_PATH} -name "zImage" -exec mv -f {} ${KERNEL_ZIP}/tools \;
 	find ${KERNEL_PATH} -name "*.ko" -exec mv -f {} ${MODULES_PATH} \;
 
