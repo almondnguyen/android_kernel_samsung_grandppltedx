@@ -89,6 +89,13 @@
 /* <--- MM DVFS related */
 #include <mt_smi.h>
 
+/* dev-harsh1998: export streaming status */
+#include <linux/cpufreq.h>
+static bool wePlayin;
+bool StreamStatus(void) {
+	return wePlayin;
+}
+
 #define DROP_PERCENTAGE     50
 #define RAISE_PERCENTAGE    90
 #define MONITOR_DURATION_MS 4000
@@ -2031,6 +2038,7 @@ static int vcodec_open(struct inode *inode, struct file *file)
 	MODULE_MFV_LOGE("vcodec_open pid = %d, Driver_Open_Count %d\n", current->pid, Driver_Open_Count);
 	mutex_unlock(&DriverOpenCountLock);
 
+	wePlayin = true;
 
 	/* TODO: Check upper limit of concurrent users? */
 
@@ -2136,6 +2144,7 @@ static int vcodec_release(struct inode *inode, struct file *file)
 	mutex_unlock(&DecEMILock);
 #endif
 
+	wePlayin = false;
 	mutex_unlock(&DriverOpenCountLock);
 
 	return 0;
