@@ -625,4 +625,6 @@ int cpufreq_generic_init(struct cpufreq_policy *policy,
 
 void acct_update_power(struct task_struct *p, cputime_t cputime);
 
+bool StreamStatus(void);
+
 #endif /* _LINUX_CPUFREQ_H */
