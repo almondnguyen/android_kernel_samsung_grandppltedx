@@ -125,8 +125,8 @@ struct cpufreq_interactive_tunables {
 	bool io_is_busy;
 };
 
-/* dev-harsh1998: limit max bg freq to 299mhz if we're playing videos */
-#define MAX_STREAM_FREQ 299000
+/* dev-harsh1998: limit max bg freq to 598mhz if we're playing videos */
+#define MAX_STREAM_FREQ 598000
 static unsigned long InStreamFreq = MAX_STREAM_FREQ;
 
 static bool AreWeStreaming(void)
