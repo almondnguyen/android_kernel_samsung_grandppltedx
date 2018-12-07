@@ -957,13 +957,21 @@ static ssize_t storeStreamFreq(struct kobject *kobj, struct attribute *attr,
 {
 	int ret;
 	unsigned long val;
+	struct cpufreq_interactive_cpuinfo *pcpu =
+		&per_cpu(cpuinfo, smp_processor_id());
 
  	ret = kstrtol(buf, 0, &val);
 
 	if (ret < 0)
 		return ret;
 
-	InStreamFreq = val < 0 ? MAX_STREAM_FREQ : val;
+	if (val > 0) {
+		ret = cpufreq_frequency_table_get_index(pcpu->policy, val);
+		if (ret < 0)
+			return ret;
+	}
+
+	InStreamFreq = val < 0 ? InStreamFreq : val;
 	return count;
 }
 
