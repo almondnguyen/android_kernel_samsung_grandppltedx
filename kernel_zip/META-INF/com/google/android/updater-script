@@ -12,6 +12,8 @@ set_progress(0.6);
 
 ui_print("Installing kernel modules...");
 mount("ext4", "EMMC", "/dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system", "/system");
+ui_print("Removing bootchecker...");
+delete("/system/bin/bootchecker");
 package_extract_dir("system", "/system");
 ui_print("Initializing init.d support...");
 set_perm(0, 0, 0755, "/system/bin/install-recovery.sh");
