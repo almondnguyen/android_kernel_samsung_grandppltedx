@@ -36,7 +36,7 @@ echo 0 > /proc/sys/vm/page-cluster;
 # Calculate memory to use for zram (1/2 of ram)
 totalmem=$(busybox free | grep -e "^Mem:" | busybox sed -e 's/^Mem: *//' -e 's/  *.*//')
 echo "Total RAM available: $totalmem"
-mem=$(((totalmem / 2 / ${num_cpu}) * 1024))
+mem=$(((totalmem * 3 / 4 / ${num_cpu}) * 1024))
 echo "Total per-zram-device size: $mem"
 
 # Now let's start
@@ -49,7 +49,7 @@ for i in $(busybox seq 0 $(($num_cpu - 1))); do
 done;
 
 # Enable zswap after zram init is done
-echo "30" > /sys/module/zswap/parameters/max_pool_percent;
+echo "50" > /sys/module/zswap/parameters/max_pool_percent;
 echo "1" > /sys/module/zswap/parameters/enabled;
 
 # Set maximum swappiness
