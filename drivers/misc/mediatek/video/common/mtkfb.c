@@ -1520,7 +1520,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		display_on = true;
 		mtkfb_blank_resume();
 	#ifdef CONFIG_POWERSUSPEND
-		set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
+		set_power_suspend_state_panel_hook(POWER_SUSPEND_INACTIVE);
 	#endif
 		if (!lcd_fps)
 			msleep(30);
@@ -1534,7 +1534,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		display_on = false;
 		mtkfb_blank_suspend();
 	#ifdef CONFIG_POWERSUSPEND
-		set_power_suspend_state_panel_hook(POWER_SUSPEND_INACTIVE);
+		set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
 	#endif
 		break;
 	default:
