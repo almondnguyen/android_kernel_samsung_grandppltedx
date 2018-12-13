@@ -50,7 +50,7 @@ done;
 
 # Enable zswap after zram init is done
 echo "50" > /sys/module/zswap/parameters/max_pool_percent;
-echo "zbud" > /sys/module/zswap/paramters/zpool;
+echo "z3fold" > /sys/module/zswap/parameters/zpool;
 echo "1" > /sys/module/zswap/parameters/enabled;
 
 # Set maximum swappiness
