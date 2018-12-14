@@ -43,6 +43,7 @@ echo "Total per-zram-device size: $mem"
 for i in $(busybox seq 0 $(($num_cpu - 1))); do
 	echo "Adding zram$i";
 	cat /sys/class/zram-control/hot_add;
+	echo "zstd" > /sys/block/zram$i/comp_algorithm;
 	echo $mem > /sys/block/zram$i/disksize;
 	mkswap /dev/block/zram$i;
 	swapon -p 05 /dev/block/zram$i;
