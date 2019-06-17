@@ -1,2 +1,2 @@
 # android_kernel_samsung_grandppltedx
-Samsung G532G Kernel for LineageOS 14.1
+Samsung G532G GO TO OREO  Custom
