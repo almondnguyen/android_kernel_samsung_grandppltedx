@@ -81,7 +81,7 @@ if [[ ! -d gcc ]]; then
     export ARCH=arm CROSS_COMPILE=${PWD}/gcc/bin/arm-eabi-
     export SUBARCH=arm
 else
-    export ARCH=arm CROSS_COMPILE=${PWD}/gcc/bin/arm-eabi-
+    export ARCH=arm CROSS_COMPILE=${PWD}/arm-eabi-4.8-google-mt6580/bin/arm-eabi-
     export SUBARCH=arm
 fi
 }
