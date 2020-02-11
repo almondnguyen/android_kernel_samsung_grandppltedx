@@ -96,6 +96,15 @@ config ANDROID_FSTAB_FAKE
 	  This is intended to allow early mounting partitions
 	  on devices without DT, or where DT can't be modified.
 
+config ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
+	bool "Enable android fstab driver for fake DT fstab"
+	depends on ANDROID_FSTAB_FAKE
+	---help---
+	  Add system mount point for Magisk compatibility.
+	  Only enable this config on Magisk patched kernels.
+	  Enabling this config on a non-patched kernel will
+	  break the system boot.
+
 config ANDROID_INTF_ALARM_DEV
 	bool "Android alarm driver"
 	depends on RTC_CLASS
