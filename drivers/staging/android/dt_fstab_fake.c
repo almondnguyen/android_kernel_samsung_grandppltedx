@@ -37,6 +37,17 @@ static struct file_operations dt_file_ops_##_name = { \
 	.release = single_release \
 };
 
+#ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
+#define DT_PARTITION_INIT(_name, _block, _fsmgr, _mnt, _type) \
+DT_FILE_INIT(compatible_##_name, "android,"#_name)  \
+DT_FILE_INIT(dev_##_name, _block)  \
+DT_FILE_INIT(fsmgr_##_name, _fsmgr) \
+DT_FILE_INIT(mnt_##_name, _mnt) \
+DT_FILE_INIT(mnt_point_##_name, "/system_root") \
+DT_FILE_INIT(name_##_name, #_name) \
+DT_FILE_INIT(status_##_name, "okay") \
+DT_FILE_INIT(type_##_name, _type)
+#else
 #define DT_PARTITION_INIT(_name, _block, _fsmgr, _mnt, _type) \
 DT_FILE_INIT(compatible_##_name, "android,"#_name)  \
 DT_FILE_INIT(dev_##_name, _block)  \
@@ -45,6 +56,7 @@ DT_FILE_INIT(mnt_##_name, _mnt) \
 DT_FILE_INIT(name_##_name, #_name) \
 DT_FILE_INIT(status_##_name, "okay") \
 DT_FILE_INIT(type_##_name, _type)
+#endif
 
 #define DT_DIR_CREATE(_path) \
 if (proc_mkdir(_path, NULL) == NULL) { \
@@ -58,6 +70,18 @@ if (proc_create(_path, 0, NULL, &dt_file_ops_##_name ) == NULL) { \
 	return 1; \
 }
 
+#ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
+#define DT_PARTITION_CREATE(_name) \
+DT_DIR_CREATE("device-tree/firmware/android/fstab/"#_name) \
+DT_FILE_CREATE(compatible_##_name, "device-tree/firmware/android/fstab/"#_name"/compatible") \
+DT_FILE_CREATE(dev_##_name, "device-tree/firmware/android/fstab/"#_name"/dev") \
+DT_FILE_CREATE(fsmgr_##_name, "device-tree/firmware/android/fstab/"#_name"/fsmgr_flags") \
+DT_FILE_CREATE(mnt_##_name, "device-tree/firmware/android/fstab/"#_name"/mnt_flags") \
+DT_FILE_CREATE(mnt_point_##_name, "device-tree/firmware/android/fstab/"#_name"/mnt_point") \
+DT_FILE_CREATE(name_##_name, "device-tree/firmware/android/fstab/"#_name"/name") \
+DT_FILE_CREATE(status_##_name, "device-tree/firmware/android/fstab/"#_name"/status") \
+DT_FILE_CREATE(type_##_name, "device-tree/firmware/android/fstab/"#_name"/type")
+#else
 #define DT_PARTITION_CREATE(_name) \
 DT_DIR_CREATE("device-tree/firmware/android/fstab/"#_name) \
 DT_FILE_CREATE(compatible_##_name, "device-tree/firmware/android/fstab/"#_name"/compatible") \
@@ -67,10 +91,23 @@ DT_FILE_CREATE(mnt_##_name, "device-tree/firmware/android/fstab/"#_name"/mnt_fla
 DT_FILE_CREATE(name_##_name, "device-tree/firmware/android/fstab/"#_name"/name") \
 DT_FILE_CREATE(status_##_name, "device-tree/firmware/android/fstab/"#_name"/status") \
 DT_FILE_CREATE(type_##_name, "device-tree/firmware/android/fstab/"#_name"/type")
+#endif
 
 #define DT_REMOVE(_path) \
 remove_proc_entry(_path, NULL);
 
+#ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
+#define DT_PARTITION_REMOVE(_name) \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/type") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/status") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/name") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/mnt_point") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/mnt_flags") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/fsmgr_flags") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/dev") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/compatible") \
+DT_REMOVE("device-tree/firmware/android/fstab/"#_name)
+#else
 #define DT_PARTITION_REMOVE(_name) \
 DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/type") \
 DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/status") \
@@ -80,6 +117,7 @@ DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/fsmgr_flags") \
 DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/dev") \
 DT_REMOVE("device-tree/firmware/android/fstab/"#_name"/compatible") \
 DT_REMOVE("device-tree/firmware/android/fstab/"#_name)
+#endif
 
 // Setup basic hierarchy
 DT_FILE_INIT(android_compatible, "android,firmware")
