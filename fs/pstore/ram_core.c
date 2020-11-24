@@ -35,6 +35,20 @@ struct persistent_ram_buffer {
 	uint8_t     data[0];
 };
 
+#ifdef __aarch64__
+static void *_memcpy(void *dest, const void *src, size_t count)
+{
+	char *tmp = dest;
+	const char *s = src;
+
+	while (count--)
+		*tmp++ = *s++;
+	return dest;
+}
+
+#define memcpy _memcpy
+#endif
+
 #define PERSISTENT_RAM_SIG (0x43474244) /* DBGC */
 
 static inline size_t buffer_size(struct persistent_ram_zone *prz)
@@ -380,7 +394,7 @@ void persistent_ram_zap(struct persistent_ram_zone *prz)
 	persistent_ram_update_header_ecc(prz);
 }
 
-static void *persistent_ram_vmap(phys_addr_t start, size_t size,
+void *persistent_ram_vmap(phys_addr_t start, size_t size,
 		unsigned int memtype)
 {
 	struct page **pages;

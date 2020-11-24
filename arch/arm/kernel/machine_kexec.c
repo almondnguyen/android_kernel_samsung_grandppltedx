@@ -18,7 +18,12 @@
 #include <asm/mach-types.h>
 #include <asm/smp_plat.h>
 #include <asm/system_misc.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
 
+DECLARE_PER_CPU(struct sec_debug_core_t, sec_debug_core_reg);
+DECLARE_PER_CPU(struct sec_debug_mmu_reg_t, sec_debug_mmu_reg);
+#endif
 extern void relocate_new_kernel(void);
 extern const unsigned int relocate_new_kernel_size;
 
@@ -78,9 +83,11 @@ void machine_crash_nonpanic_core(void *unused)
 	struct pt_regs regs;
 
 	crash_setup_regs(&regs, NULL);
-	printk(KERN_DEBUG "CPU %u will stop doing anything useful since another CPU has crashed\n",
-	       smp_processor_id());
 	crash_save_cpu(&regs, smp_processor_id());
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_save_mmu_reg(&per_cpu(sec_debug_mmu_reg, smp_processor_id()));
+	sec_debug_save_core_reg(&per_cpu(sec_debug_core_reg, smp_processor_id()));
+#endif
 	flush_cache_all();
 
 	set_cpu_online(smp_processor_id(), false);
@@ -130,8 +137,6 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	crash_save_cpu(regs, smp_processor_id());
 	machine_kexec_mask_interrupts();
-
-	printk(KERN_INFO "Loading crashdump kernel...\n");
 }
 
 /*

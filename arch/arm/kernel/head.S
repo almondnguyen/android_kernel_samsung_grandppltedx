@@ -35,8 +35,8 @@
  * relax this restriction to KERNEL_RAM_VADDR >= PAGE_OFFSET + 0x4000.
  */
 #define KERNEL_RAM_VADDR	(PAGE_OFFSET + TEXT_OFFSET)
-#if (KERNEL_RAM_VADDR & 0xffff) != 0x8000
-#error KERNEL_RAM_VADDR must start at 0xXXXX8000
+#if (KERNEL_RAM_VADDR & 0xffff) != 0x4000
+#error KERNEL_RAM_VADDR must start at 0xXXXX4000
 #endif
 
 #ifdef CONFIG_ARM_LPAE
@@ -346,6 +346,12 @@ __turn_mmu_on_loc:
 
 #if defined(CONFIG_SMP)
 	.text
+	.arm
+ENTRY(secondary_startup_arm)
+ THUMB(	adr	r9, BSYM(1f)	)	@ Kernel is entered in ARM.
+ THUMB(	bx	r9		)	@ If this is a Thumb-2 kernel,
+ THUMB(	.thumb			)	@ switch to Thumb now.
+ THUMB(1:			)
 ENTRY(secondary_startup)
 	/*
 	 * Common entry point for secondary CPUs.
@@ -385,6 +391,7 @@ ENTRY(secondary_startup)
  THUMB(	add	r12, r10, #PROCINFO_INITFUNC	)
  THUMB(	ret	r12				)
 ENDPROC(secondary_startup)
+ENDPROC(secondary_startup_arm)
 
 	/*
 	 * r6  = &secondary_data

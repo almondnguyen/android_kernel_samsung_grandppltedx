@@ -8,6 +8,7 @@
 #include <linux/hardirq.h>
 #include <linux/perf_event.h>
 #include <linux/tracepoint.h>
+#include <linux/sec_debug.h>
 
 struct trace_array;
 struct trace_buffer;
@@ -557,18 +558,21 @@ int trace_set_clr_event(const char *system, const char *event, int set);
  * if we try to allocate the static variable to fmt if it is not a
  * constant. Even with the outer if statement optimizing out.
  */
-#define event_trace_printk(ip, fmt, args...)				\
-do {									\
-	__trace_printk_check_format(fmt, ##args);			\
-	tracing_record_cmdline(current);				\
-	if (__builtin_constant_p(fmt)) {				\
-		static const char *trace_printk_fmt			\
-		  __attribute__((section("__trace_printk_fmt"))) =	\
-			__builtin_constant_p(fmt) ? fmt : NULL;		\
-									\
-		__trace_bprintk(ip, trace_printk_fmt, ##args);		\
-	} else								\
-		__trace_printk(ip, fmt, ##args);			\
+#define event_trace_printk(ip, fmt, args...)					\
+do {										\
+	extern union sec_debug_level_t sec_debug_level;				\
+	if (sec_debug_level.uint_val) {							\
+		__trace_printk_check_format(fmt, ##args);			\
+		tracing_record_cmdline(current);				\
+		if (__builtin_constant_p(fmt)) {				\
+			static const char *trace_printk_fmt			\
+			  __attribute__((section("__trace_printk_fmt"))) =	\
+				__builtin_constant_p(fmt) ? fmt : NULL;		\
+										\
+			__trace_bprintk(ip, trace_printk_fmt, ##args);		\
+		} else								\
+			__trace_printk(ip, fmt, ##args);			\
+	}									\
 } while (0)
 
 #ifdef CONFIG_PERF_EVENTS

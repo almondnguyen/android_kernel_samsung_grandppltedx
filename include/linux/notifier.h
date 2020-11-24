@@ -189,6 +189,7 @@ static inline int notifier_to_errno(int ret)
  */
  
 /* CPU notfiers are defined in include/linux/cpu.h. */
+extern struct raw_notifier_head cpu_chain;
 
 /* netdevice notifiers are defined in include/linux/netdevice.h */
 

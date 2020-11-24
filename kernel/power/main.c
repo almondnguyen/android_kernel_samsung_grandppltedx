@@ -16,9 +16,26 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+#include <linux/cpufreq.h>
+#include <linux/cpufreq_limit.h>
+#endif
+
 #include "power.h"
 
+#define HIB_PM_DEBUG 1
+#define _TAG_HIB_M "HIB/PM"
+#if (HIB_PM_DEBUG)
+#undef hib_log
+#define hib_log(fmt, ...)  pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__)
+#else
+#define hib_log(fmt, ...)
+#endif
+#undef hib_warn
+#define hib_warn(fmt, ...) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__)
+
 DEFINE_MUTEX(pm_mutex);
+EXPORT_SYMBOL_GPL(pm_mutex);
 
 #ifdef CONFIG_PM_SLEEP
 
@@ -44,6 +61,7 @@ int pm_notifier_call_chain(unsigned long val)
 
 	return notifier_to_errno(ret);
 }
+EXPORT_SYMBOL_GPL(pm_notifier_call_chain);
 
 /* If set, devices may be suspended and resumed asynchronously. */
 int pm_async_enabled = 1;
@@ -277,6 +295,7 @@ static inline void pm_print_times_init(void) {}
 #endif /* CONFIG_PM_SLEEP_DEBUG */
 
 struct kobject *power_kobj;
+EXPORT_SYMBOL_GPL(power_kobj);
 
 /**
  * state - control system sleep states.
@@ -341,6 +360,11 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	suspend_state_t state;
 	int error;
 
+#ifdef CONFIG_MTK_HIBERNATION
+	char *p;
+	int len;
+#endif
+
 	error = pm_autosleep_lock();
 	if (error)
 		return error;
@@ -351,12 +375,35 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	}
 
 	state = decode_state(buf, n);
-	if (state < PM_SUSPEND_MAX)
+
+#ifdef CONFIG_MTK_HIBERNATION
+	p = memchr(buf, '\n', n);
+	len = p ? p - buf : n;
+	if (len == 8 && !strncmp(buf, "hibabort", len)) {
+		hib_log("abort hibernation...\n");
+		error = mtk_hibernate_abort();
+		goto out;
+	}
+#endif
+
+	pr_warn("[%s]: state = (%d)\n", __func__, state);
+
+	if (state < PM_SUSPEND_MAX) {
 		error = pm_suspend(state);
-	else if (state == PM_SUSPEND_MAX)
+		pr_warn("[%s]: pm_suspend() return (%d)\n", __func__, error);
+	} else if (state == PM_SUSPEND_MAX) {
+#ifdef CONFIG_MTK_HIBERNATION
+		hib_log("trigger hibernation...\n");
+		if (!pre_hibernate()) {
+			error = 0;
+			error = mtk_hibernate();
+		}
+#else /* !CONFIG_MTK_HIBERNATION */
 		error = hibernate();
-	else
+#endif /* CONFIG_MTK_HIBERNATION */
+	} else {
 		error = -EINVAL;
+	}
 
  out:
 	pm_autosleep_unlock();
@@ -513,6 +560,236 @@ power_attr(wake_unlock);
 #endif /* CONFIG_PM_WAKELOCKS */
 #endif /* CONFIG_PM_SLEEP */
 
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+static int cpufreq_max_limit_val = -1;
+static int cpufreq_min_limit_val = -1;
+struct cpufreq_limit_handle *cpufreq_max_hd;
+struct cpufreq_limit_handle *cpufreq_min_hd;
+struct cpufreq_limit_handle *cpufreq_min_booster;
+struct cpufreq_limit_handle *cpufreq_min_touch;
+struct cpufreq_limit_handle *cpufreq_min_finger;
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+struct cpufreq_limit_handle *cpufreq_min_sdchg;
+#endif
+DEFINE_MUTEX(cpufreq_limit_mutex);
+
+static ssize_t cpufreq_table_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	ssize_t len = 0;
+	len = cpufreq_limit_get_table(buf);
+
+	return len;
+}
+
+static ssize_t cpufreq_table_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	pr_err("%s: cpufreq_table is read-only\n", __func__);
+	return -EINVAL;
+}
+
+static ssize_t cpufreq_max_limit_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_max_limit_val);
+}
+
+static ssize_t cpufreq_max_limit_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t n)
+{
+	int val;
+	ssize_t ret = -EINVAL;
+
+	if (sscanf(buf, "%d", &val) != 1) {
+		pr_err("%s: Invalid cpufreq format\n", __func__);
+		goto out;
+	}
+
+	mutex_lock(&cpufreq_limit_mutex);
+	if (cpufreq_max_hd) {
+		cpufreq_limit_put(cpufreq_max_hd);
+		cpufreq_max_hd = NULL;
+	}
+
+	/* big core hotplut in/out regarding max limit clock */
+	cpufreq_limit_corectl(val);
+
+	if (val != -1) {
+		cpufreq_max_hd = cpufreq_limit_max_freq(val, "user lock(max)");
+		if (IS_ERR(cpufreq_max_hd)) {
+			pr_err("%s: fail to get the handle\n", __func__);
+			cpufreq_max_hd = NULL;
+		}
+	}
+
+	cpufreq_max_hd ?
+		(cpufreq_max_limit_val = val) : (cpufreq_max_limit_val = -1);
+
+	mutex_unlock(&cpufreq_limit_mutex);
+	ret = n;
+out:
+	return ret;
+}
+
+static ssize_t cpufreq_min_limit_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_min_limit_val);
+}
+
+static ssize_t cpufreq_min_limit_store(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					const char *buf, size_t n)
+{
+	int val;
+	ssize_t ret = -EINVAL;
+
+	if (sscanf(buf, "%d", &val) != 1) {
+		pr_err("%s: Invalid cpufreq format\n", __func__);
+		goto out;
+	}
+
+	mutex_lock(&cpufreq_limit_mutex);
+	if (cpufreq_min_hd) {
+		cpufreq_limit_put(cpufreq_min_hd);
+		cpufreq_min_hd = NULL;
+	}
+
+	if (val != -1) {
+		cpufreq_min_hd = cpufreq_limit_min_freq(val, "user lock(min)");
+		if (IS_ERR(cpufreq_min_hd)) {
+			pr_err("%s: fail to get the handle\n", __func__);
+			cpufreq_min_hd = NULL;
+		}
+	}
+
+//	cpufreq_min_hd ?
+//		(cpufreq_min_limit_val = cpufreq_min_hd->min) : (cpufreq_min_limit_val = -1);
+
+	unsigned long max = 0;
+	if(cpufreq_min_booster && cpufreq_min_booster->min > max) max = cpufreq_min_booster->min;
+	if(cpufreq_min_hd && cpufreq_min_hd->min > max) max = cpufreq_min_hd->min;
+	if(cpufreq_min_touch && cpufreq_min_touch->min > max) max = cpufreq_min_touch->min;
+	if(cpufreq_min_finger && cpufreq_min_finger->min > max) max = cpufreq_min_finger->min;
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+	if(cpufreq_min_sdchg && cpufreq_min_sdchg->min > max) max = cpufreq_min_sdchg->min;
+#endif
+
+	if(max > 0)	cpufreq_min_limit_val = max;
+	else cpufreq_min_limit_val = -1;
+
+	mutex_unlock(&cpufreq_limit_mutex);
+	ret = n;
+out:
+	return ret;
+}
+
+power_attr(cpufreq_table);
+power_attr(cpufreq_max_limit);
+power_attr(cpufreq_min_limit);
+
+int set_min_freq_limit(unsigned int freq)
+{
+	ssize_t ret = 0;
+
+	mutex_lock(&cpufreq_limit_mutex);
+
+	if (cpufreq_min_booster) {
+		cpufreq_limit_put(cpufreq_min_booster);
+		cpufreq_min_booster = NULL;
+	}
+
+	if (freq > 0) {
+		cpufreq_min_booster = cpufreq_limit_min_freq(freq, "Input Booster");
+		if (IS_ERR(cpufreq_min_touch)) {
+			pr_err("%s: fail to get the handle\n", __func__);
+			cpufreq_min_booster = NULL;
+			ret = -EINVAL;
+		}
+	}
+
+	unsigned long max = 0;
+	if(cpufreq_min_booster && cpufreq_min_booster->min > max) max = cpufreq_min_booster->min;
+	if(cpufreq_min_hd && cpufreq_min_hd->min > max) max = cpufreq_min_hd->min;
+	if(cpufreq_min_touch && cpufreq_min_touch->min > max) max = cpufreq_min_touch->min;
+	if(cpufreq_min_finger && cpufreq_min_finger->min > max) max = cpufreq_min_finger->min;
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+	if(cpufreq_min_sdchg && cpufreq_min_sdchg->min > max) max = cpufreq_min_sdchg->min;
+#endif		
+	if(max > 0)	cpufreq_min_limit_val = max;
+	else cpufreq_min_limit_val = -1;
+	
+	pr_debug("@cpufreq_min_limit_val = %d\n", cpufreq_min_limit_val);
+
+	mutex_unlock(&cpufreq_limit_mutex);
+
+	return ret;
+}
+
+int set_freq_limit(unsigned long id, unsigned int freq)
+{
+	ssize_t ret = 0;
+
+	pr_debug("%s: id=%d freq=%d\n", __func__, (int)id, freq);
+
+	mutex_lock(&cpufreq_limit_mutex);
+	/* min lock */
+	if (id & DVFS_TOUCH_ID) {
+		if (cpufreq_min_touch) {
+			cpufreq_limit_put(cpufreq_min_touch);
+			cpufreq_min_touch = NULL;
+		}
+		if (freq != -1) {
+			cpufreq_min_touch = cpufreq_limit_min_freq(freq, "touch min");
+			if (IS_ERR(cpufreq_min_touch)) {
+				pr_err("%s: fail to get the handle\n", __func__);
+				cpufreq_min_touch = NULL;
+				ret = -EINVAL;
+			}
+		}
+	}
+
+	if (id & DVFS_FINGER_ID) {
+		if (cpufreq_min_finger) {
+			cpufreq_limit_put(cpufreq_min_finger);
+			cpufreq_min_finger = NULL;
+		}
+		if (freq != -1) {
+			cpufreq_min_finger = cpufreq_limit_min_freq(freq, "finger min");
+			if (IS_ERR(cpufreq_min_finger)) {
+				pr_err("%s: fail to get the handle\n", __func__);
+				cpufreq_min_finger = NULL;
+				ret = -EINVAL;
+			}
+		}
+	}
+
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+	if (id & DVFS_SDCHG_ID) {
+		if (cpufreq_min_sdchg) {
+			cpufreq_limit_put(cpufreq_min_sdchg);
+			cpufreq_min_sdchg = NULL;
+		}
+		if (freq != -1) {
+			cpufreq_min_sdchg = cpufreq_limit_min_freq(freq, "sdchg min");
+			if (IS_ERR(cpufreq_min_sdchg)) {
+				pr_err("%s: fail to get the handle\n", __func__);
+				cpufreq_min_sdchg = NULL;
+				ret = -EINVAL;
+			}
+		}
+	}
+#endif
+	mutex_unlock(&cpufreq_limit_mutex);
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_PM_TRACE
 int pm_trace_enabled;
 
@@ -583,6 +860,75 @@ power_attr(pm_freeze_timeout);
 
 #endif	/* CONFIG_FREEZER*/
 
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+#include "perfmgr.h"
+extern bool           sdchg_idle_policy_set;
+extern unsigned int   sdchg_idle_poll_mask;
+unsigned int          sdchg_cpu_core_lock_num;
+
+static char selfdischg_usage_str[] =
+#if defined(CONFIG_ARCH_MT6735)
+	"[START]\n"
+	"/sys/power/selfdischg_usage 1\n"
+	"[STOP]\n"
+	"/sys/power/selfdischg_usage 0\n"
+	"[END]\n";
+	#define SDCHG_ACTIVE_CPU_MASK	0x0F    /* CPU 0~3 */
+	#define SDCHG_MIN_CPUFREQ		819000  /* <= lowest CPUFreq limit by SSRM xml */
+	#define SDCHG_MIN_CPUCORE_LOCK_NUM	4
+#else
+	"[NOT_SUPPORT]\n";
+	#define SDCHG_ACTIVE_CPU_MASK	0x00    /* not support */
+	#define SDCHG_MIN_CPUFREQ		-1
+	#define SDCHG_MIN_CPUCORE_LOCK_NUM	-1
+#endif
+
+static ssize_t selfdischg_usage_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	pr_info("%s\n", __func__);
+	return sprintf(buf, "%s", selfdischg_usage_str);
+}
+
+static ssize_t selfdischg_usage_store(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+
+	if ( val == 1 ) {
+		sdchg_idle_poll_mask = SDCHG_ACTIVE_CPU_MASK;
+		sdchg_idle_policy_set = 1;
+		sdchg_cpu_core_lock_num = SDCHG_MIN_CPUCORE_LOCK_NUM;
+		mt_perfmgr_boost_core(SDCHG_MIN_CPUCORE_LOCK_NUM);
+		set_freq_limit(DVFS_SDCHG_ID, SDCHG_MIN_CPUFREQ);
+	}
+	else if ( val == 0 ) {
+		sdchg_idle_poll_mask = 0;
+		sdchg_idle_policy_set = 0;
+		mt_perfmgr_boost_core(-1);
+		set_freq_limit(DVFS_SDCHG_ID, -1);
+	}
+	pr_info("[SELFDISCHG] EN:%lu\n", val);
+
+	return n;
+}
+
+
+static struct kobj_attribute selfdischg_usage_attr = {
+	.attr	= {
+		.name = __stringify(selfdischg_usage),
+		.mode = 0640,
+	},
+	.show	= selfdischg_usage_show,
+	.store	= selfdischg_usage_store,
+};
+#endif /* CONFIG_SW_SELF_DISCHARGING */
+
 static struct attribute * g[] = {
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
@@ -606,8 +952,16 @@ static struct attribute * g[] = {
 	&pm_print_times_attr.attr,
 #endif
 #endif
+#ifdef CONFIG_CPU_FREQ_LIMIT_USERSPACE
+	&cpufreq_table_attr.attr,
+	&cpufreq_max_limit_attr.attr,
+	&cpufreq_min_limit_attr.attr,
+#endif
 #ifdef CONFIG_FREEZER
 	&pm_freeze_timeout_attr.attr,
+#endif
+#if defined(CONFIG_SW_SELF_DISCHARGING)
+	&selfdischg_usage_attr.attr,
 #endif
 	NULL,
 };

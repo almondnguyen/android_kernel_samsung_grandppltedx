@@ -37,6 +37,10 @@
 #include <linux/rmap.h>
 #include "internal.h"
 
+#ifdef CONFIG_SDP
+#include <sdp/cache_cleanup.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
 
@@ -180,6 +184,11 @@ static void page_cache_tree_delete(struct address_space *mapping,
 void __delete_from_page_cache(struct page *page, void *shadow)
 {
 	struct address_space *mapping = page->mapping;
+
+#ifdef CONFIG_SDP
+	if(mapping_sensitive(mapping))
+		sdp_page_cleanup(page);
+#endif
 
 	trace_mm_filemap_delete_from_page_cache(page);
 	/*
@@ -1810,7 +1819,14 @@ static void do_sync_mmap_readahead(struct vm_area_struct *vma,
 	/*
 	 * mmap read-around
 	 */
+#if CONFIG_MMAP_READAROUND_LIMIT == 0
 	ra_pages = max_sane_readahead(ra->ra_pages);
+#else
+	if (ra->ra_pages > CONFIG_MMAP_READAROUND_LIMIT)
+		ra_pages = max_sane_readahead(CONFIG_MMAP_READAROUND_LIMIT);
+	else
+		ra_pages = max_sane_readahead(ra->ra_pages);
+#endif
 	ra->start = max_t(long, 0, offset - ra_pages / 2);
 	ra->size = ra_pages;
 	ra->async_size = ra_pages / 4;
@@ -1890,8 +1906,15 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		 */
 		do_async_mmap_readahead(vma, ra, file, page, offset);
 	} else if (!page) {
+		trace_mm_fmflt_op_read(0);
 		/* No page in the page cache at all */
 		do_sync_mmap_readahead(vma, ra, file, offset);
+		trace_mm_fmflt_op_read_done(0);
+
+		/* mlog */
+		count_vm_event(PGFMFAULT);
+		current->fm_flt++;
+
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -1901,10 +1924,16 @@ retry_find:
 			goto no_cached_page;
 	}
 
+	if (ret == VM_FAULT_MAJOR)
+		trace_mm_fmflt_op_wait(0);
 	if (!lock_page_or_retry(page, vma->vm_mm, vmf->flags)) {
+		if (ret == VM_FAULT_MAJOR)
+			trace_mm_fmflt_op_wait_done(0);
 		page_cache_release(page);
 		return ret | VM_FAULT_RETRY;
 	}
+	if (ret == VM_FAULT_MAJOR)
+		trace_mm_fmflt_op_wait_done(0);
 
 	/* Did it get truncated? */
 	if (unlikely(page->mapping != mapping)) {

@@ -45,6 +45,7 @@
 #include <linux/kernel.h>
 
 #define USB_STORAGE "usb-storage: "
+static DEFINE_RATELIMIT_STATE(usb_stor_dbg_ratelimit, 1*HZ, 300);
 
 #ifdef CONFIG_USB_STORAGE_DEBUG
 void usb_stor_show_command(const struct us_data *us, struct scsi_cmnd *srb);
@@ -53,7 +54,8 @@ void usb_stor_show_sense(const struct us_data *us, unsigned char key,
 __printf(2, 3) int usb_stor_dbg(const struct us_data *us,
 				const char *fmt, ...);
 
-#define US_DEBUGPX(fmt, ...)	printk(fmt, ##__VA_ARGS__)
+#define US_DEBUGPX(fmt, ...)	\
+	do { if (__ratelimit(&usb_stor_dbg_ratelimit)) printk(fmt, ##__VA_ARGS__); } while (0)
 #define US_DEBUG(x)		x
 #else
 __printf(2, 3)

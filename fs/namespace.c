@@ -726,7 +726,12 @@ static struct mountpoint *new_mountpoint(struct dentry *dentry)
 	struct mountpoint *mp;
 	int ret;
 
-	mp = kmalloc(sizeof(struct mountpoint), GFP_KERNEL);
+	/*
+	 * We are allocating as GFP_NOFS to appease lockdep:
+	 * since we are holding i_mutex we should not try to
+	 * recurse into filesystem code.
+	 */
+	mp = kmalloc(sizeof(struct mountpoint), GFP_NOFS);
 	if (!mp)
 		return ERR_PTR(-ENOMEM);
 
@@ -975,7 +980,7 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	list_add_tail(&mnt->mnt_instance, &sb->s_mounts);
 	unlock_mount_hash();
 
-	if ((flag & CL_SLAVE) ||
+	if (((flag & CL_SLAVE) && !IS_MNT_SLAVE(old)) ||
 	    ((flag & CL_SHARED_TO_SLAVE) && IS_MNT_SHARED(old))) {
 		list_add(&mnt->mnt_slave, &old->mnt_slave_list);
 		mnt->mnt_master = old;
@@ -1306,7 +1311,7 @@ static void namespace_unlock(void)
 
 	up_write(&namespace_sem);
 
-	synchronize_rcu();
+	synchronize_rcu_expedited();
 
 	while (!hlist_empty(&head)) {
 		mnt = hlist_entry(head.first, struct mount, mnt_hash);

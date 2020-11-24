@@ -1462,6 +1462,13 @@ out:
 
 void crash_kexec(struct pt_regs *regs)
 {
+#ifdef CONFIG_SEC_DEBUG
+	static DEFINE_PER_CPU(unsigned char, crash_call_once);
+
+	if (__this_cpu_read(crash_call_once))
+		return;
+	__this_cpu_inc(crash_call_once);
+#endif
 	/* Take the kexec_mutex here to prevent sys_kexec_load
 	 * running on one cpu from replacing the crash kernel
 	 * we are using after a panic on a different cpu.
@@ -1471,14 +1478,18 @@ void crash_kexec(struct pt_regs *regs)
 	 * sufficient.  But since I reuse the memory...
 	 */
 	if (mutex_trylock(&kexec_mutex)) {
+#ifndef CONFIG_SEC_DEBUG
 		if (kexec_crash_image) {
+#endif
 			struct pt_regs fixed_regs;
 
 			crash_setup_regs(&fixed_regs, regs);
 			crash_save_vmcoreinfo();
 			machine_crash_shutdown(&fixed_regs);
+#ifndef CONFIG_SEC_DEBUG
 			machine_kexec(kexec_crash_image);
 		}
+#endif
 		mutex_unlock(&kexec_mutex);
 	}
 }
