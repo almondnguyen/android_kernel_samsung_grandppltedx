@@ -2600,7 +2600,7 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 
 	do {
 		vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup,
-				sc->priority);
+				sc->priority, sc->order);
 		sc->nr_scanned = 0;
 		zones_reclaimable = shrink_zones(zonelist, sc);
 
