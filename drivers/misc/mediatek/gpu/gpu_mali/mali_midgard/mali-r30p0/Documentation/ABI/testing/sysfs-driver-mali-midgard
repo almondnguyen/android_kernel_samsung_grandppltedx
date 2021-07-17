@@ -1,0 +1,158 @@
+What:		/sys/class/misc/mali0/device/gpuinfo
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This is used to get a description of the present Mali GPU, which
+		includes the GPU family, the number of cores, the hardware
+		version and the raw product id.
+		For example: Mali-T60x MP4 r0p0 0x6956
+
+What:		/sys/class/misc/mali0/device/core_mask
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This is used to restrict shader core availability for debugging
+		purposes.
+		Reads show the current core mask and the mask of cores available.
+		Writes set the current core mask.
+
+What:		/sys/class/misc/mali0/device/js_timeouts
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This is used to override the current job scheduler values for
+		- JS_STOP_STOP_TICKS_SS
+		- JS_STOP_STOP_TICKS_CL
+		- JS_HARD_STOP_TICKS_SS
+		- JS_HARD_STOP_TICKS_CL
+		- JS_HARD_STOP_TICKS_DUMPING
+		- JS_RESET_TICKS_SS
+		- JS_RESET_TICKS_CL
+		- JS_RESET_TICKS_DUMPING.
+		This file contains five values separated by whitespace. The
+		values are basically the same as:
+		%JS_SOFT_STOP_TICKS, %JS_HARD_STOP_TICKS_SS, %JS_HARD_STOP_TICKS_DUMPING, %JS_RESET_TICKS_SS, %JS_RESET_TICKS_DUMPING
+		configuration values (in that order), with the difference that
+		the js_timeout values are expressed in MILLISECONDS.
+
+		Writing to it allows the current values in use by the job
+		scheduler to get override. Note that a value needs to be other
+		than 0 for it to override the current job scheduler value.
+		Reading returns the last set values written to this file. If the
+		file didn't get written yet, the values will be current setting
+		in use.
+
+What:		/sys/class/misc/mali0/device/js_scheduling_period
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	The js_scheduling_period values are expressed in MILLISECONDS.
+		Writing updates the JS scheduling period value.
+		Reading returns the current period used for the JS scheduling
+		period.
+
+What:		/sys/class/misc/mali0/device/reset_timeout
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	The reset_timeout value is expressed in MILLISECONDS.
+		This file is used to update or get the reset timeout.
+
+What:		/sys/class/misc/mali0/device/soft_job_timeout
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	Writes allows setting the timeout for software jobs.
+		Reads return the current timeout value.
+		Waiting soft event wait jobs will be cancelled after this period
+		expires, while soft fence wait jobs will print debug information
+		if the fence debug feature is enabled.
+		Timeout is expressed in milliseconds.
+
+What:		/sys/class/misc/mali0/device/js_ctx_scheduling_mode
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This file is used to update or get the context scheduling mode
+		being used by Job Scheduler, available values are: 0 or 1;
+		- 0, called SYSTEM_PRIORITY_MODE
+		  In this mode, higher priority atoms will be scheduled first,
+		  regardless of the context they belong to. Newly-runnable
+		  higher priority atoms can preempt lower priority atoms
+		  currently running on the GPU, even if they belong to a
+		  different context.
+		- 1, called LOCAL_PRIORITY_MODE
+		  In this mode, the highest-priority atom will be chosen fro
+		  each context in turn using a round-robin algorithm, so
+		  priority only has an effect within the context an atom belongs
+		  to. Newly-runnable higher priority atoms can preempt the lower
+		  priority atoms currently running on the GPU, but only if they
+		  belong to the same context.
+
+What:		/sys/class/misc/mali0/device/scheduling/serialize_jobs
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This file is used to update the serialization setting for the
+		submission of GPU jobs. The available values are:
+		- "none"
+		  Disable job serialization, the default mode.
+		- "intra-slot"
+		  Serialize atoms within a slot (ie only one atom per job slot).
+		- "inter-slot"
+		  Serialize atoms between slots (ie only one job slot running at
+		  any time).
+		- "full"
+		  Equal to "intra-slot" + "inter-slot"
+		- "full-reset"
+		  Beside "full", reset the GPU after each atom completion.
+
+What:		/sys/class/misc/mali0/device/force_replay
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	Control the job replay, possible settings: limit=<limit>,
+		random_limit, norandom_limit, core_req=<core_req>.
+
+What:		/sys/class/misc/mali0/device/power_policy
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This is used for obtaining information about the available power
+		policies, determining which policy is currently active, and
+		changing the active policy.
+		Reads list the available policies with the currently active one
+		surrounded by square brackets.
+		Writes change the current policy to the requrested one, the
+		requsted policy must be one of the available policies returned
+		by reading, or it will be ignored.
+
+What:		/sys/class/misc/mali0/device/dvfs_period
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This file is used to update or get the current period used for
+		the DVFS sample.
+
+What:		/sys/class/misc/mali0/device/pm_poweroff
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This file contains three values separated by whitespace:
+		$gpu_poweroff_time $poweroff_shader_ticks %poweroff_gpu_ticks
+
+		- gpu_poweroff_time
+		  the period of the poweroff timer, in ns.
+		- poweroff_shader_ticks
+		  the number of poweroff timer ticks before an idle shader is
+		  powered off.
+		- poweroff_gpu_ticks
+		  the number of poweroff timer ticks before the GPU is powered
+		  off.
+
+What:		/sys/class/misc/mali0/device/mempool/max_size
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	Reads return total current pool size for all device global 4KiB
+		page pool.
+		Writes set max size for all device global 4KiB page pool.
+
+What:		/sys/class/misc/mali0/device/mempool/lp_max_size
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	Reads return total current pool size for all device global 2MiB
+		page pool.
+		Writes set max size for all device global 2MiB page pool.
+
+What:		/sys/class/misc/mali0/device/mempool/ctx_max_size
+Date:		August 2020
+Contact:	Tom Whalley <tom.whalley@arm.com>
+Description:	This file is used to set max size for all pools for new contexts
