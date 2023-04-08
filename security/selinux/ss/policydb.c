@@ -1502,7 +1502,7 @@ static int type_read(struct policydb *p, struct hashtab *h, void *fp)
 bad:
 #ifndef CONFIG_ALWAYS_ENFORCE
 	panic("SELinux:Failed to type read");
-#endif /*CONFIG_ALWAYS_ENFORCE*/
+#endif /*CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE*/
 	type_destroy(key, typdatum, NULL);
 	return rc;
 }
@@ -2513,7 +2513,7 @@ out:
 bad:
 #ifndef CONFIG_ALWAYS_ENFORCE
 	panic("SELinux:Failed to load policy");
-#endif /*CONFIG_ALWAYS_ENFORCE*/
+#endif /*CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE*/
 	policydb_destroy(p);
 	goto out;
 }
