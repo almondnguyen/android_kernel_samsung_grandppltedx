@@ -769,7 +769,7 @@ static int port_net_recv_skb(struct ccci_port *port, struct sk_buff *skb)
 	md->netif_rx_profile[0] = dev->stats.rx_bytes - 40*dev->stats.rx_packets;
 	md->netif_rx_profile[1] = dev->stats.tx_bytes - 40*dev->stats.tx_packets;
 #endif
-	wake_lock_timeout(&port->rx_wakelock, HZ);
+	__pm_wakeup_event(&port->rx_wakelock, 1000);
 #ifdef PORT_NET_TRACE
 	total_time = sched_clock() - total_time;
 	trace_port_net_rx(md->index, PORT_RXQ_INDEX(port), port->rx_ch, (unsigned int)rx_cb_time,
@@ -814,7 +814,7 @@ static void port_net_md_state_notice(struct ccci_port *port, MD_STATE state)
 	case RX_IRQ:
 		mod_timer(&nent->polling_timer, jiffies + HZ);
 		napi_schedule(&nent->napi);
-		wake_lock_timeout(&port->rx_wakelock, HZ);
+		__pm_wakeup_event(&port->rx_wakelock, 1000);
 		break;
 	case TX_IRQ:
 		if (netif_running(dev) && netif_queue_stopped(dev) && atomic_read(&port->usage_cnt) > 0)

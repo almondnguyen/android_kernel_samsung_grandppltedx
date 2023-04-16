@@ -24,8 +24,8 @@
 /* extern unsigned int md_ex_type; */
 /* unsigned int push_data_fail = 0; */
 static struct chr_ctl_block_t *chr_ctlb[MAX_MD_NUM];
-static struct wake_lock chrdev_wakelock[MAX_MD_NUM];
-static struct wake_lock chrdev_wakelock_mdlogger[MAX_MD_NUM];
+static struct wakeup_source chrdev_wakelock[MAX_MD_NUM];
+static struct wakeup_source chrdev_wakelock_mdlogger[MAX_MD_NUM];
 char chrdev_wakelock_name[MAX_MD_NUM][32];
 char chrdev_wakelock_mdlog_name[MAX_MD_NUM][32];
 unsigned int md_img_exist[MD_IMG_MAX_CNT] = { 0 };
@@ -171,9 +171,9 @@ static void ccci_chrdev_callback(void *private)
 	client->wakeup_waitq = 1;
 	wake_up_interruptible(&client->wait_q);
 	if (client->ch_num != CCCI_MD_LOG_RX)
-		wake_lock_timeout(&chrdev_wakelock[client->md_id], HZ / 2);
+		__pm_wakeup_event(&chrdev_wakelock[client->md_id], 500);
 	else	/*  MD logger using 1s wake lock */
-		wake_lock_timeout(&chrdev_wakelock_mdlogger[client->md_id], HZ);
+		__pm_wakeup_event(&chrdev_wakelock_mdlogger[client->md_id], 1000);
 
 	kill_fasync(&client->fasync, SIGIO, POLL_IN);
 }
@@ -660,13 +660,11 @@ int ccci_chrdev_init(int md_id)
 	}
 
 	sprintf(chrdev_wakelock_name[md_id], "ccci%d_chr", (md_id + 1));
-	wake_lock_init(&chrdev_wakelock[md_id], WAKE_LOCK_SUSPEND,
-		       chrdev_wakelock_name[md_id]);
+	wakeup_source_init(&chrdev_wakelock[md_id], chrdev_wakelock_name[md_id]);
 
 	sprintf(chrdev_wakelock_mdlog_name[md_id], "ccci%d_chr_mdlog",
 		(md_id + 1));
-	wake_lock_init(&chrdev_wakelock_mdlogger[md_id], WAKE_LOCK_SUSPEND,
-		       chrdev_wakelock_mdlog_name[md_id]);
+	wakeup_source_init(&chrdev_wakelock_mdlogger[md_id], chrdev_wakelock_mdlog_name[md_id]);
 
 	spin_lock_init(&md_logger_lock);
 
@@ -696,8 +694,8 @@ void ccci_chrdev_exit(int md_id)
 		kfree(chr_ctlb[md_id]);
 		chr_ctlb[md_id] = NULL;
 	}
-	wake_lock_destroy(&chrdev_wakelock[md_id]);
-	wake_lock_destroy(&chrdev_wakelock_mdlogger[md_id]);
+	wakeup_source_trash(&chrdev_wakelock[md_id]);
+	wakeup_source_trash(&chrdev_wakelock_mdlogger[md_id]);
 }
 
 /* ======================================================= */
@@ -991,7 +989,7 @@ void ccci_md_logger_notify(void)
 	if (md_logger_client) {
 		wake_up_interruptible(&md_logger_client->wait_q);
 		/*  MD logger using 1s wake lock */
-		wake_lock_timeout(&chrdev_wakelock_mdlogger[md_logger_client->md_id], HZ);
+		__pm_wakeup_event(&chrdev_wakelock_mdlogger[md_logger_client->md_id], 1000);
 		catch_more = 1;
 	}
 	spin_unlock_irqrestore(&md_logger_lock, flags);

@@ -51,7 +51,7 @@ struct ccmni_v2_instance_t {
 	struct timer_list timer;
 	unsigned long send_len;
 	struct net_device *dev;
-	struct wake_lock wake_lock;
+	struct wakeup_source wake_lock;
 	spinlock_t spinlock;
 	atomic_t usage;
 	struct shared_mem_ccmni_t *shared_mem;
@@ -681,9 +681,9 @@ static void ccmni_v2_read(unsigned long arg)
  out:
 	spin_unlock_bh(&ccmni->spinlock);
 
-	CCCI_CCMNI_MSG(md_id, "CCMNI%d_read invoke wake_lock_timeout(1s)\n",
+	CCCI_CCMNI_MSG(md_id, "CCMNI%d_read invoke __pm_wakeup_event(1s)\n",
 		       ccmni->channel);
-	wake_lock_timeout(&ctl_b->ccmni_wake_lock, HZ);
+	__pm_wakeup_event(&ctl_b->ccmni_wake_lock, 1000);
 }
 
 /*   will be called when modem sends us something. */
@@ -1211,8 +1211,7 @@ int ccmni_v2_init(int md_id)
 
 	snprintf(ctl_b->wakelock_name, sizeof(ctl_b->wakelock_name),
 		 "ccci%d_net_v2", (md_id + 1));
-	wake_lock_init(&ctl_b->ccmni_wake_lock, WAKE_LOCK_SUSPEND,
-		       ctl_b->wakelock_name);
+	wakeup_source_init(&ctl_b->ccmni_wake_lock, ctl_b->wakelock_name);
 
 	return ret;
 
@@ -1234,6 +1233,6 @@ void ccmni_v2_exit(int md_id)
 		for (count = 0; count < CCMNI_V2_PORT_NUM; count++)
 			ccmni_v2_destroy_instance(md_id, count);
 		md_unregister_call_chain(md_id, &ctl_b->ccmni_notifier);
-		wake_lock_destroy(&ctl_b->ccmni_wake_lock);
+		wakeup_source_trash(&ctl_b->ccmni_wake_lock);
 	}
 }

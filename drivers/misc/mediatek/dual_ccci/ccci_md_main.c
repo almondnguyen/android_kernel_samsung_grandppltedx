@@ -75,7 +75,7 @@ struct md_ctl_block_t {
 	struct smem_alloc_t *smem_table;
 	struct ccci_mem_layout_t *md_layout;
 	/*  -- TRM wake lock */
-	struct wake_lock trm_wake_lock;
+	struct wakeup_source trm_wake_lock;
 	char wakelock_name[16];
 	/*  -- Timer */
 	struct timer_list md_ex_monitor;
@@ -2131,7 +2131,7 @@ int send_md_reset_notify(int md_id)
 	/* if( (ret < 0)&&(ret != -CCCI_ERR_MD_IN_RESET) ) */
 	if (ret < 0)
 		return ret;
-	wake_lock_timeout(&ctl_b->trm_wake_lock, 10 * HZ);
+	__pm_wakeup_event(&ctl_b->trm_wake_lock, 10000);
 	ccci_system_message(md_id, CCCI_MD_MSG_RESET, 0);
 
 	return 0;
@@ -2722,8 +2722,7 @@ int ccci_md_ctrl_init(int md_id)
 	}
 	snprintf(ctlb->wakelock_name, sizeof(ctlb->wakelock_name), "ccci%d_trm",
 		 (md_id + 1));
-	wake_lock_init(&ctlb->trm_wake_lock, WAKE_LOCK_SUSPEND,
-		       ctlb->wakelock_name);
+	wakeup_source_init(&ctlb->trm_wake_lock, ctlb->wakelock_name);
 
 	/*  Timer init */
 	init_timer(&ctlb->md_ex_monitor);
@@ -2815,7 +2814,7 @@ void ccci_md_ctrl_exit(int md_id)
 
 	if (ctlb == NULL)
 		return;
-	wake_lock_destroy(&ctlb->trm_wake_lock);
+	wakeup_source_trash(&ctlb->trm_wake_lock);
 	del_timer(&ctlb->md_boot_up_check_timer);
 	del_timer(&ctlb->md_boot_up_check_timer);
 	/* ccci_free_smem(md_id); */
