@@ -1339,7 +1339,7 @@ static int s2mu005_fg_get_property(struct power_supply *psy,
 			/* check whether doing the wake_unlock */
 			if ((val->intval > fuelgauge->pdata->fuel_alert_soc) &&
 					fuelgauge->is_fuel_alerted) {
-				wake_unlock(&fuelgauge->fuel_alert_wake_lock);
+				__pm_relax(&fuelgauge->fuel_alert_wake_lock);
 				s2mu005_fuelgauge_fuelalert_init(fuelgauge->i2c,
 						fuelgauge->pdata->fuel_alert_soc);
 			}
@@ -1494,7 +1494,7 @@ static void s2mu005_fg_isr_work(struct work_struct *work)
 
 	if (!fg_alert_status) {
 		pr_info("%s : SOC or Volage is Good!\n", __func__);
-		wake_unlock(&fuelgauge->fuel_alert_wake_lock);
+		__pm_stay_awake(&fuelgauge->fuel_alert_wake_lock);
 	}
 }
 
@@ -1506,7 +1506,7 @@ static irqreturn_t s2mu005_fg_irq_thread(int irq, void *irq_data)
 	s2mu005_read_reg_byte(fuelgauge->i2c, S2MU005_REG_IRQ, &fg_irq);
 	dev_info(&fuelgauge->i2c->dev, "%s: fg_irq(0x%x)\n",
 		__func__, fg_irq);
-	wake_lock(&fuelgauge->fuel_alert_wake_lock);
+	__pm_stay_awake(&fuelgauge->fuel_alert_wake_lock);
 	schedule_delayed_work(&fuelgauge->isr_work, 0);
 
 	return IRQ_HANDLED;
@@ -1744,8 +1744,7 @@ static int s2mu005_fuelgauge_probe(struct i2c_client *client,
 	if (fuelgauge->pdata->fuel_alert_soc >= 0) {
 		s2mu005_fuelgauge_fuelalert_init(fuelgauge->i2c,
 					fuelgauge->pdata->fuel_alert_soc);
-		wake_lock_init(&fuelgauge->fuel_alert_wake_lock,
-					WAKE_LOCK_SUSPEND, "fuel_alerted");
+		wakeup_source_init(&fuelgauge->fuel_alert_wake_lock, "fuel_alerted");
 
 		if (fuelgauge->pdata->fg_irq > 0) {
 			INIT_DELAYED_WORK(
@@ -1824,7 +1823,7 @@ static int s2mu005_fuelgauge_remove(struct i2c_client *client)
 	struct s2mu005_fuelgauge_data *fuelgauge = i2c_get_clientdata(client);
 
 	if (fuelgauge->pdata->fuel_alert_soc >= 0)
-		wake_lock_destroy(&fuelgauge->fuel_alert_wake_lock);
+		wakeup_source_trash(&fuelgauge->fuel_alert_wake_lock);
 
 	return 0;
 }
