@@ -120,7 +120,7 @@ struct s2mu005_fuelgauge_data {
 	 */
 	struct sec_fg_info      info;
 	bool is_fuel_alerted;
-	struct wake_lock fuel_alert_wake_lock;
+	struct wakeup_source fuel_alert_wake_lock;
 
 	unsigned int capacity_old;      /* only for atomic calculation */
 	unsigned int capacity_max;      /* only for dynamic calculation */
