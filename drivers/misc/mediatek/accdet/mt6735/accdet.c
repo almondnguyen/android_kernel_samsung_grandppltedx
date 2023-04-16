@@ -105,10 +105,10 @@ static int g_accdet_first = 1;
 static bool IRQ_CLR_FLAG;
 static int call_status;
 static int button_status;
-struct wake_lock accdet_suspend_lock;
-struct wake_lock accdet_irq_lock;
-struct wake_lock accdet_key_lock;
-struct wake_lock accdet_timer_lock;
+struct wakeup_source accdet_suspend_lock;
+struct wakeup_source accdet_irq_lock;
+struct wakeup_source accdet_key_lock;
+struct wakeup_source accdet_timer_lock;
 static struct work_struct accdet_work;
 static struct workqueue_struct *accdet_workqueue;
 static DEFINE_MUTEX(accdet_eint_irq_sync_mutex);
@@ -428,7 +428,7 @@ static void accdet_eint_work_callback(struct work_struct *work)
 		mutex_lock(&accdet_eint_irq_sync_mutex);
 		eint_accdet_sync_flag = 1;
 		mutex_unlock(&accdet_eint_irq_sync_mutex);
-		wake_lock_timeout(&accdet_timer_lock, 7 * HZ);
+		__pm_wakeup_event(&accdet_timer_lock, 7000);
 #ifdef CONFIG_ACCDET_PIN_SWAP
 		/*pmic_pwrap_write(0x0400, pmic_pwrap_read(0x0400)|(1<<14)); */
 		msleep(800);
@@ -483,7 +483,7 @@ static void accdet_eint_work_callback(struct work_struct *work)
 		mutex_lock(&accdet_eint_irq_sync_mutex);
 		eint_accdet_sync_flag = 1;
 		mutex_unlock(&accdet_eint_irq_sync_mutex);
-		wake_lock_timeout(&accdet_timer_lock, 7 * HZ);
+		__pm_wakeup_event(&accdet_timer_lock, 7000);
 #ifdef CONFIG_ACCDET_PIN_SWAP
 		/*pmic_pwrap_write(0x0400, pmic_pwrap_read(0x0400)|(1<<14)); */
 		msleep(800);
@@ -1268,7 +1268,7 @@ static inline void check_cable_type(void)
 
 static void accdet_work_callback(struct work_struct *work)
 {
-	wake_lock(&accdet_irq_lock);
+	__pm_relax(&accdet_irq_lock);
 	check_cable_type();
 
 #ifdef CONFIG_ACCDET_PIN_SWAP
@@ -1292,7 +1292,7 @@ static void accdet_work_callback(struct work_struct *work)
 	mutex_unlock(&accdet_eint_irq_sync_mutex);
 	ACCDET_DEBUG(" [accdet] set state in cable_type %d\n", cable_type);
 
-	wake_unlock(&accdet_irq_lock);
+	__pm_stay_awake(&accdet_irq_lock);
 }
 
 void accdet_get_dts_data(void)
@@ -1864,10 +1864,10 @@ int mt_accdet_probe(struct platform_device *dev)
 	/*------------------------------------------------------------------
 	// wake lock
 	//------------------------------------------------------------------*/
-	wake_lock_init(&accdet_suspend_lock, WAKE_LOCK_SUSPEND, "accdet wakelock");
-	wake_lock_init(&accdet_irq_lock, WAKE_LOCK_SUSPEND, "accdet irq wakelock");
-	wake_lock_init(&accdet_key_lock, WAKE_LOCK_SUSPEND, "accdet key wakelock");
-	wake_lock_init(&accdet_timer_lock, WAKE_LOCK_SUSPEND, "accdet timer wakelock");
+	wakeup_source_init(&accdet_suspend_lock, "accdet wakelock");
+	wakeup_source_init(&accdet_irq_lock, "accdet irq wakelock");
+	wakeup_source_init(&accdet_key_lock, "accdet key wakelock");
+	wakeup_source_init(&accdet_timer_lock, "accdet timer wakelock");
 #if DEBUG_THREAD
 	ret = accdet_create_attr(&accdet_driver_hal.driver);
 	if (ret != 0)
