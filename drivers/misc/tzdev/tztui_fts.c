@@ -89,7 +89,7 @@ static const char i2c_dev_name[] = "1-0049";
 static atomic_t touch_requested;
 
 static struct completion irq_completion;
-static struct wake_lock wakelock;
+static struct wakeup_source wakelock;
 
 static int request_touch(void);
 static int release_touch(void);
@@ -288,8 +288,8 @@ static int request_touch(void)
 		retval = -EFAULT;
 		goto exit_err;
 	}
-	wake_lock(&wakelock);
-	wake_lock(&fts_info->wakelock);
+	__pm_stay_awake(&wakelock);
+	__pm_stay_awake(&fts_info->wakelock);
 
 	/*mutex_lock(&fts_info->device_mutex);*/
 	if (fts_info->touch_stopped) {
@@ -503,7 +503,7 @@ static int __init tztui_init(void)
 	(void)thread_handler_stop;
 	(void)irq_wait_queue;
 
-	wake_lock_init(&wakelock, WAKE_LOCK_SUSPEND, "tztui_wakelock");
+	wakeup_source_init(&wakelock, "tztui_wakelock");
 	ts = kthread_create(thread_handler, NULL, "per_cpu_thread");
 	kthread_bind(ts, cpu_num);
 	if (!IS_ERR(ts))
@@ -529,7 +529,7 @@ static int __init tztui_init(void)
 static void __exit tztui_exit(void)
 {
 	tui_set_mode(TUI_OFFLINE);
-	wake_lock_destroy(&wakelock);
+	wakeup_source_trash(&wakelock);
 	if (ts) {
 		thread_handler_stop = 1;
 		wake_up(&irq_wait_queue);
