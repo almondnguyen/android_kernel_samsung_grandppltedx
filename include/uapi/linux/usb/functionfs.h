@@ -169,6 +169,11 @@ struct usb_functionfs_event {
  */
 #define	FUNCTIONFS_ENDPOINT_REVMAP	_IO('g', 129)
 
-
+/*
+ * Returns endpoint descriptor. If endpoint shuts down during the call,
+ * returns -ESHUTDOWN.
+ */
+#define	FUNCTIONFS_ENDPOINT_DESC	_IOR('g', 130, \
+					     struct usb_endpoint_descriptor)
 
 #endif /* _UAPI__LINUX_FUNCTIONFS_H__ */
