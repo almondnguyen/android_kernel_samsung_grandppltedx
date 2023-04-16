@@ -135,7 +135,7 @@ struct asc_tx_handle {
 	wait_queue_head_t wait;
 	wait_queue_head_t wait_tx_state;
 	struct mutex mlock;
-	struct wake_lock wlock;
+	struct wakeup_source wlock;
 	struct timer_list timer_wait_ready;
 	struct timer_list timer_wait_idle;
 	struct timer_list timer_wait_sleep;
@@ -207,7 +207,7 @@ struct asc_rx_handle {
 	spinlock_t slock;
 	wait_queue_head_t wait;
 	struct mutex mlock;
-	struct wake_lock wlock;
+	struct wakeup_source wlock;
 	struct timer_list timer;
 	struct list_head event_q;
 	struct list_head node;
@@ -337,7 +337,7 @@ static irqreturn_t asc_irq_cp_wake_ap(int irq, void *data)
 
 	if (level == cfg->polar) {
 		/*Cp requset Ap wake */
-		wake_lock(&rx->wlock);
+		__pm_stay_awake(&rx->wlock);
 		/*FIXME: jump to ready as soon as possible to avoid the AP_READY error indication to CBP */
 		if (AP_RX_ST_IDLE == atomic_read(&rx->state)) {
 			ASCDPRT("Rx(%s): process event(%d) in state(%s).\n",
@@ -709,7 +709,7 @@ static int asc_rx_handle_init(struct asc_rx_handle *rx)
 		goto err_malloc_name;
 	}
 	snprintf(name, ASC_NAME_LEN, "asc_rx_%s", rx->cfg.name);
-	wake_lock_init(&rx->wlock, WAKE_LOCK_SUSPEND, name);
+	wakeup_source_init(&rx->wlock, name);
 	init_waitqueue_head(&rx->wait);
 	INIT_WORK(&rx->ntf_prepare_work, asc_rx_notifier_prepare_work);
 	INIT_WORK(&rx->ntf_post_work, asc_rx_notifier_post_work);
@@ -747,7 +747,7 @@ static int asc_rx_handle_sleep(void *data, int event)
 
 	switch (event) {
 	case AP_RX_EVENT_REQUEST:
-		wake_lock(&rx->wlock);
+		__pm_stay_awake(&rx->wlock);
 		atomic_set(&rx->state, AP_RX_ST_WAIT_READY);
 		asc_rx_notifier(rx, ASC_NTF_RX_PREPARE);
 		break;
@@ -783,7 +783,7 @@ static int asc_rx_handle_wait_ready(void *data, int event)
 		asc_rx_notifier(rx, ASC_NTF_RX_POST);
 		/*need ack ready to cp, do nothing if no gpio for ap_ready */
 		asc_rx_indicate_sleep(rx);
-		wake_unlock(&rx->wlock);
+		__pm_relax(&rx->wlock);
 		break;
 	default:
 		ASCDPRT("ignore the rx event %d in state(%s)", event,
@@ -1207,7 +1207,7 @@ static int asc_tx_handle_init(struct asc_tx_handle *tx)
 		goto err_malloc_name;
 	}
 	snprintf(name, ASC_NAME_LEN, "asc_tx_%s", tx->cfg.name);
-	wake_lock_init(&tx->wlock, WAKE_LOCK_SUSPEND, name);
+	wakeup_source_init(&tx->wlock, name);
 	init_waitqueue_head(&tx->wait);
 	init_waitqueue_head(&tx->wait_tx_state);
 	setup_timer(&tx->timer_wait_ready, asc_tx_wait_ready_timer,
@@ -1251,7 +1251,7 @@ static int asc_tx_handle_sleep(void *data, int event)
 
 	switch (event) {
 	case AP_TX_EVENT_REQUEST:
-		wake_lock(&tx->wlock);
+		__pm_stay_awake(&tx->wlock);
 		asc_tx_wake_cp(tx);
 		/*if(tx->cfg.gpio_ready >= 0) */
 		if (((tx->cfg.gpio_ready) & 0xFFFF) >= 0) {
