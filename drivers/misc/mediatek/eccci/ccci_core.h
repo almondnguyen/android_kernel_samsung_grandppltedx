@@ -526,7 +526,7 @@ struct ccci_port {
 	wait_queue_head_t rx_wq;	/* for uplayer user */
 	int rx_length;
 	int rx_length_th;
-	struct wake_lock rx_wakelock;
+	struct wakeup_source rx_wakelock;
 	unsigned int tx_busy_count;
 	unsigned int rx_busy_count;
 	int interception;
@@ -999,7 +999,7 @@ static inline void ccci_port_struct_init(struct ccci_port *port, struct ccci_mod
 	port->rx_busy_count = 0;
 	atomic_set(&port->usage_cnt, 0);
 	port->modem = md;
-	wake_lock_init(&port->rx_wakelock, WAKE_LOCK_SUSPEND, port->name);
+	wakeup_source_init(&port->rx_wakelock, port->name);
 }
 
 /*

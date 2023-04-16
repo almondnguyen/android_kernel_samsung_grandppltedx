@@ -52,7 +52,7 @@ struct tty_instance_t {
 	int uart_tx;
 	int uart_rx_ack;
 	int idx;
-	struct wake_lock wake_lock;
+	struct wakeup_source wake_lock;
 	char wakelock_name[16];
 	wait_queue_head_t write_waitq;
 	wait_queue_head_t read_waitq;
@@ -165,9 +165,9 @@ static void ccci_tty_callback(void *private)
 				wake_up_interruptible_poll(&ctlb->
 							   ccci_tty_meta.poll_waitq_r,
 							   POLLIN);
-				wake_lock_timeout(&ctlb->
+				__pm_wakeup_event(&ctlb->
 						  ccci_tty_meta.wake_lock,
-						  HZ / 2);
+						  500);
 			}
 			break;
 
@@ -191,9 +191,9 @@ static void ccci_tty_callback(void *private)
 				wake_up_interruptible_poll
 				    (&ctlb->ccci_tty_modem.poll_waitq_r,
 				     POLLIN);
-				wake_lock_timeout(&ctlb->
+				__pm_wakeup_event(&ctlb->
 						  ccci_tty_modem.wake_lock,
-						  HZ / 2);
+						  500);
 			}
 			break;
 
@@ -214,8 +214,8 @@ static void ccci_tty_callback(void *private)
 				wake_up_interruptible_poll(&ctlb->
 							   ccci_tty_ipc.poll_waitq_r,
 							   POLLIN);
-				wake_lock_timeout(&ctlb->ccci_tty_ipc.wake_lock,
-						  HZ / 2);
+				__pm_wakeup_event(&ctlb->ccci_tty_ipc.wake_lock,
+						  500);
 			}
 			break;
 #ifdef CONFIG_MTK_ICUSB_SUPPORT
@@ -236,9 +236,9 @@ static void ccci_tty_callback(void *private)
 				wake_up_interruptible_poll
 				    (&ctlb->ccci_tty_icusb.poll_waitq_r,
 				     POLLIN);
-				wake_lock_timeout(&ctlb->
+				__pm_wakeup_event(&ctlb->
 						  ccci_tty_icusb.wake_lock,
-						  HZ / 2);
+						  500);
 			}
 			break;
 #endif
@@ -307,7 +307,7 @@ static ssize_t ccci_tty_read(struct file *file, char *buf, size_t count,
 		data_be_read = size;
 	/* copy_to_user may be scheduled,  */
 	/* So add 0.5s wake lock to make sure ccci user can be running. */
-	wake_lock_timeout(&tty_instance->wake_lock, HZ / 2);
+	__pm_wakeup_event(&tty_instance->wake_lock, 500);
 	if ((read + data_be_read) >= length) {
 		/*  Need read twice */
 
@@ -818,8 +818,7 @@ void ccci_tty_instance_init(struct tty_instance_t *instance)
 {
 	rwlock_init(&instance->ccci_tty_rwlock);
 	spin_lock_init(&instance->poll_lock);
-	wake_lock_init(&instance->wake_lock, WAKE_LOCK_SUSPEND,
-		       instance->wakelock_name);
+	wakeup_source_init(&instance->wake_lock, instance->wakelock_name);
 	/* setup_timer(&instance->timer, tty_timer_func, instance); */
 	mutex_init(&instance->ccci_tty_mutex);
 	init_waitqueue_head(&instance->read_waitq);
@@ -1060,11 +1059,11 @@ void __exit ccci_tty_exit(int md_id)
 		ctlb->uart4_shared_mem = NULL;
 #endif
 
-		wake_lock_destroy(&ctlb->ccci_tty_modem.wake_lock);
-		wake_lock_destroy(&ctlb->ccci_tty_meta.wake_lock);
-		wake_lock_destroy(&ctlb->ccci_tty_ipc.wake_lock);
+		wakeup_source_trash(&ctlb->ccci_tty_modem.wake_lock);
+		wakeup_source_trash(&ctlb->ccci_tty_meta.wake_lock);
+		wakeup_source_trash(&ctlb->ccci_tty_ipc.wake_lock);
 #ifdef CONFIG_MTK_ICUSB_SUPPORT
-		wake_lock_destroy(&ctlb->ccci_tty_icusb.wake_lock);
+		wakeup_source_trash(&ctlb->ccci_tty_icusb.wake_lock);
 #endif
 
 		kfree(ctlb);
