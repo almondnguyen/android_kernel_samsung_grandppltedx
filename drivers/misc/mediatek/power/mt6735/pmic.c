@@ -43,13 +43,7 @@
 #include <linux/mutex.h>
 #include <linux/kthread.h>
 #include <linux/reboot.h>
-/*
-#if !defined CONFIG_HAS_WAKELOCKS
-#include <linux/pm_wakeup.h>  included in linux/device.h
-#else
-*/
 #include <linux/wakelock.h>
-/*#endif*/
 #include <linux/device.h>
 #include <linux/kdev_t.h>
 #include <linux/fs.h>
@@ -2146,11 +2140,7 @@ static struct hrtimer bat_percent_notify_timer;
 static struct task_struct *bat_percent_notify_thread;
 static bool bat_percent_notify_flag;
 static DECLARE_WAIT_QUEUE_HEAD(bat_percent_notify_waiter);
-#if !defined CONFIG_HAS_WAKELOCKS
 struct wakeup_source bat_percent_notify_lock;
-#else
-struct wake_lock bat_percent_notify_lock;
-#endif
 
 static DEFINE_MUTEX(bat_percent_notify_mutex);
 #endif
@@ -2244,11 +2234,7 @@ int bat_percent_notify_handler(void *unused)
 		wait_event_interruptible(bat_percent_notify_waiter,
 					 (bat_percent_notify_flag == true));
 
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_stay_awake(&bat_percent_notify_lock);
-#else
-		wake_lock(&bat_percent_notify_lock);
-#endif
 		mutex_lock(&bat_percent_notify_mutex);
 
 #if defined(CONFIG_MTK_SMART_BATTERY)
@@ -2268,11 +2254,7 @@ int bat_percent_notify_handler(void *unused)
 		PMICLOG("bat_per_level=%d,bat_per_val=%d\n", g_battery_percent_level, bat_per_val);
 
 		mutex_unlock(&bat_percent_notify_mutex);
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_relax(&bat_percent_notify_lock);
-#else
-		wake_unlock(&bat_percent_notify_lock);
-#endif
 
 		hrtimer_start(&bat_percent_notify_timer, ktime, HRTIMER_MODE_REL);
 
@@ -2484,11 +2466,7 @@ static struct task_struct *dlpt_notify_thread;
 static bool dlpt_notify_flag;
 static DECLARE_WAIT_QUEUE_HEAD(dlpt_notify_waiter);
 #endif
-#if !defined CONFIG_HAS_WAKELOCKS
 struct wakeup_source dlpt_notify_lock;
-#else
-struct wake_lock dlpt_notify_lock;
-#endif
 static DEFINE_MUTEX(dlpt_notify_mutex);
 
 #ifdef DLPT_FEATURE_SUPPORT
@@ -2867,11 +2845,7 @@ int dlpt_notify_handler(void *unused)
 
 		wait_event_interruptible(dlpt_notify_waiter, (dlpt_notify_flag == true));
 
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_stay_awake(&dlpt_notify_lock);
-#else
-		wake_lock(&dlpt_notify_lock);
-#endif
 		mutex_lock(&dlpt_notify_mutex);
 		/*---------------------------------*/
 #if defined(CONFIG_MTK_SMART_BATTERY)
@@ -2952,11 +2926,7 @@ int dlpt_notify_handler(void *unused)
 
 		/*---------------------------------*/
 		mutex_unlock(&dlpt_notify_mutex);
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_relax(&dlpt_notify_lock);
-#else
-		wake_unlock(&dlpt_notify_lock);
-#endif
 
 		hrtimer_start(&dlpt_notify_timer, ktime, HRTIMER_MODE_REL);
 
@@ -3239,23 +3209,14 @@ void auxadc_imp_int_handler_r(void)
  ******************************************************************************/
 static DEFINE_MUTEX(pmic_mutex);
 static struct task_struct *pmic_thread_handle;
-
-#if !defined CONFIG_HAS_WAKELOCKS
 struct wakeup_source pmicThread_lock;
-#else
-struct wake_lock pmicThread_lock;
-#endif
 
 static int register_int_state = 1;
 void wake_up_pmic(void)
 {
 	PMICLOG("[wake_up_pmic]\r\n");
 	if (pmic_thread_handle != NULL) {
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_stay_awake(&pmicThread_lock);
-#else
-		wake_lock(&pmicThread_lock);
-#endif
 		wake_up_process(pmic_thread_handle);
 	} else {
 		pr_err(PMICTAG "[%s] pmic_thread_handle not ready\n", __func__);
@@ -3515,11 +3476,7 @@ static int pmic_thread_kthread(void *x)
 		mdelay(1);
 
 		mutex_unlock(&pmic_mutex);
-#if !defined CONFIG_HAS_WAKELOCKS
 		__pm_relax(&pmicThread_lock);
-#else
-		wake_unlock(&pmicThread_lock);
-#endif
 
 		set_current_state(TASK_INTERRUPTIBLE);
 
@@ -5206,27 +5163,14 @@ static int __init pmic_mt_init(void)
 {
 	int ret;
 
-#if !defined CONFIG_HAS_WAKELOCKS
 	wakeup_source_init(&pmicThread_lock, "pmicThread_lock_mt6328 wakelock");
-#else
-	wake_lock_init(&pmicThread_lock, WAKE_LOCK_SUSPEND, "pmicThread_lock_mt6328 wakelock");
-#endif
 
 #ifdef BATTERY_PERCENT_PROTECT
-#if !defined CONFIG_HAS_WAKELOCKS
 	wakeup_source_init(&bat_percent_notify_lock, "bat_percent_notify_lock wakelock");
-#else
-	wake_lock_init(&bat_percent_notify_lock, WAKE_LOCK_SUSPEND,
-		       "bat_percent_notify_lock wakelock");
-#endif
 #endif				/* #ifdef BATTERY_PERCENT_PROTECT */
 
 #ifdef DLPT_FEATURE_SUPPORT
-#if !defined CONFIG_HAS_WAKELOCKS
 	wakeup_source_init(&dlpt_notify_lock, "dlpt_notify_lock wakelock");
-#else
-	wake_lock_init(&dlpt_notify_lock, WAKE_LOCK_SUSPEND, "dlpt_notify_lock wakelock");
-#endif
 #endif				/*#ifdef DLPT_FEATURE_SUPPORT */
 
 #if !defined CONFIG_MTK_LEGACY
