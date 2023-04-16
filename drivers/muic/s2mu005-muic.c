@@ -1309,7 +1309,7 @@ static irqreturn_t s2mu005_muic_irq_thread(int irq, void *data)
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	mutex_lock(&muic_data->muic_mutex);
-	wake_lock(&muic_data->wake_lock);
+	__pm_stay_awake(&muic_data->wake_lock);
 
 	/* check for muic reset and re-initialize registers */
 	ctrl = s2mu005_i2c_read_byte(i2c, S2MU005_REG_MUIC_CTRL1);
@@ -1354,7 +1354,7 @@ static irqreturn_t s2mu005_muic_irq_thread(int irq, void *data)
 	/* device detection */
 	s2mu005_muic_detect_dev(muic_data);
 
-	wake_unlock(&muic_data->wake_lock);
+	__pm_relax(&muic_data->wake_lock);
 	mutex_unlock(&muic_data->muic_mutex);
 
 	return IRQ_HANDLED;
@@ -1567,7 +1567,7 @@ static int s2mu005_muic_probe(struct platform_device *pdev)
 		goto fail_init_irq;
 	}
 
-	wake_lock_init(&muic_data->wake_lock, WAKE_LOCK_SUSPEND, "muic_wake");
+	wakeup_source_init(&muic_data->wake_lock, "muic_wake");
 
 	/* initial cable detection */
 	ret = set_ctrl_reg(muic_data, CTRL_INT_MASK_SHIFT, false);

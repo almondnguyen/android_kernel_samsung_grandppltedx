@@ -193,7 +193,7 @@ struct s2mu005_muic_data {
 	/* model dependant muic platform data */
 	struct muic_platform_data *pdata;
 
-	struct wake_lock wake_lock;
+	struct wakeup_source wake_lock;
 
 	/* muic support vps list */
 	bool muic_support_list[ATTACHED_DEV_NUM];
