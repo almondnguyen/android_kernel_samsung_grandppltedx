@@ -75,7 +75,7 @@ struct mt_spi_t {
 	void __iomem *regs;
 	int irq;
 	int running;
-	struct wake_lock wk_lock;
+	struct wakeup_source wk_lock;
 	struct mt_chip_conf *config;
 	struct spi_master *master;
 
@@ -879,7 +879,7 @@ static void mt_spi_msg_done(struct mt_spi_t *ms, struct spi_message *msg, int st
 		disable_clk(ms);
 		/*schedule_work(&mt_spi_msgdone_workqueue);//disable clock */
 
-		wake_unlock(&ms->wk_lock);
+		__pm_relax(&ms->wk_lock);
 	} else
 		mt_spi_next_message(ms);
 }
@@ -993,7 +993,7 @@ static int mt_spi_transfer(struct spi_device *spidev, struct spi_message *msg)
 	list_add_tail(&msg->queue, &ms->queue);
 	SPI_DBG("add msg %p to queue\n", msg);
 	if (!ms->cur_transfer) {
-		wake_lock(&ms->wk_lock);
+		__pm_stay_awake(&ms->wk_lock);
 		spi_gpio_set(ms);
 		/*enable_clk(); */
 
@@ -1419,7 +1419,7 @@ static int __init mt_spi_probe(struct platform_device *pdev)
 	ms->running = IDLE;
 	ms->cur_transfer = NULL;
 	ms->next_transfer = NULL;
-	wake_lock_init(&ms->wk_lock, WAKE_LOCK_SUSPEND, "spi_wakelock");
+	wakeup_source_init(&ms->wk_lock, "spi_wakelock");
 
 	spin_lock_init(&ms->lock);
 	INIT_LIST_HEAD(&ms->queue);
