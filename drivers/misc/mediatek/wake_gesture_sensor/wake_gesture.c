@@ -21,7 +21,7 @@ static void wag_early_suspend(struct early_suspend *h);
 static void wag_late_resume(struct early_suspend *h);
 
 static int resume_enable_status;
-static struct wake_lock wag_lock;
+static struct wakeup_source wag_lock;
 static void notify_wag_timeout(unsigned long);
 
 static struct wag_context *wag_context_alloc_object(void)
@@ -42,7 +42,7 @@ static struct wag_context *wag_context_alloc_object(void)
 
 static void notify_wag_timeout(unsigned long data)
 {
-	wake_unlock(&wag_lock);
+	__pm_relax(&wag_lock);
 }
 
 int wag_notify(void)
@@ -58,7 +58,7 @@ int wag_notify(void)
 	input_report_rel(cxt->idev, EVENT_TYPE_WAG_VALUE, value);
 	input_sync(cxt->idev);
 
-	wake_lock(&wag_lock);
+	__pm_stay_awake(&wag_lock);
 	mod_timer(&cxt->notify_timer, jiffies + HZ / 5);
 
 	return err;
@@ -309,7 +309,7 @@ static int wag_real_driver_init(void)
 		if (0 == err)
 			WAG_LOG(" wag real driver %s probe ok\n", wake_gesture_init->name);
 	}
-	wake_lock_init(&wag_lock, WAKE_LOCK_SUSPEND, "wag wakelock");
+	wakeup_source_init(&wag_lock, "wag wakelock");
 	init_timer(&wag_context_obj->notify_timer);
 	wag_context_obj->notify_timer.expires = HZ / 5;	/* 200 ms */
 	wag_context_obj->notify_timer.function = notify_wag_timeout;
