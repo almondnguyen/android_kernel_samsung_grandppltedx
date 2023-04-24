@@ -255,7 +255,7 @@ unsigned char fg_ipoh_reset;
 struct timespec batteryMeterThreadRunTime;
 static bool bat_meter_thread_timeout;
 static DEFINE_MUTEX(battery_meter_mutex);
-struct wake_lock battery_meter_lock;
+struct wakeup_source battery_meter_lock;
 
 /*static signed int coulomb_before_sleep = 0x123456;*/
 /*static signed int last_time = 1;*/
@@ -2514,7 +2514,7 @@ int battery_meter_routine_thread(void *x)
 
 	/* Run on a process content */
 	while (1) {
-		wake_lock(&battery_meter_lock);
+		__pm_stay_awake(&battery_meter_lock);
 		mutex_lock(&battery_meter_mutex);
 
 		mt_battery_update_time(&batteryMeterThreadRunTime, BATTERY_THREAD_TIME);
@@ -2562,7 +2562,7 @@ int battery_meter_routine_thread(void *x)
 			BMT_status.UI_SOC2);
 
 		mutex_unlock(&battery_meter_mutex);
-		wake_unlock(&battery_meter_lock);
+		__pm_relax(&battery_meter_lock);
 
 
 		bat_meter_thread_timeout = KAL_FALSE;
@@ -2711,7 +2711,7 @@ static int battery_meter_probe(struct platform_device *dev)
 	if (g_use_mtk_fg) {
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_daemon_log_level);
 
-		wake_lock_init(&battery_meter_lock, WAKE_LOCK_SUSPEND, "battery meter wakelock");
+		wakeup_source_init(&battery_meter_lock, "battery meter wakelock");
 	}
 
 	battery_meter_ctrl = bm_ctrl_cmd;

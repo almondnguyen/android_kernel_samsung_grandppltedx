@@ -51,7 +51,7 @@ u32 g_usb_state = USB_UNCONFIGURED;
 static u32 full_check_count;
 
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
-struct wake_lock TA_charger_suspend_lock;
+struct wakeup_source TA_charger_suspend_lock;
 bool ta_check_chr_type = true;
 bool ta_cable_out_occur = false;
 bool is_ta_connect = false;
@@ -210,7 +210,7 @@ static void battery_pump_express_charger_check(void)
 	    BMT_status.SOC < p_bat_charging_data->ta_stop_battery_soc) {
 
 		mutex_lock(&ta_mutex);
-		wake_lock(&TA_charger_suspend_lock);
+		__pm_stay_awake(&TA_charger_suspend_lock);
 
 		mtk_ta_reset_vchr();
 
@@ -237,7 +237,7 @@ static void battery_pump_express_algorithm_start(void)
 	int charger_vol;
 
 	mutex_lock(&ta_mutex);
-	wake_lock(&TA_charger_suspend_lock);
+	__pm_stay_awake(&TA_charger_suspend_lock);
 
 	if (true == is_ta_connect) {
 		/* check cable impedance */
@@ -268,7 +268,7 @@ static void battery_pump_express_algorithm_start(void)
 		battery_log(BAT_LOG_CRTI, "It's not a TA charger, bypass TA algorithm\n");
 	}
 
-	wake_unlock(&TA_charger_suspend_lock);
+	__pm_relax(&TA_charger_suspend_lock);
 	mutex_unlock(&ta_mutex);
 }
 #endif

@@ -104,7 +104,7 @@ unsigned int get_cv_voltage(void)
  /* // PUMP EXPRESS */
  /* ///////////////////////////////////////////////////////////////////////////////////////// */
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
-struct wake_lock TA_charger_suspend_lock;
+struct wakeup_source TA_charger_suspend_lock;
 kal_bool ta_check_chr_type = KAL_TRUE;
 kal_bool ta_cable_out_occur = KAL_FALSE;
 kal_bool is_ta_connect = KAL_FALSE;
@@ -392,7 +392,7 @@ static void battery_pump_express_charger_check(void)
 		battery_log(BAT_LOG_CRTI, "[PE+]Starting PE Adaptor detection\n");
 
 		mutex_lock(&ta_mutex);
-		wake_lock(&TA_charger_suspend_lock);
+		__pm_stay_awake(&TA_charger_suspend_lock);
 
 		mtk_ta_reset_vchr();
 
@@ -408,7 +408,7 @@ static void battery_pump_express_charger_check(void)
 		/*PE detection disable in the event of recharge after 1st PE detection is finished */
 		pep_det_rechg = KAL_FALSE;
 #endif
-		wake_unlock(&TA_charger_suspend_lock);
+		__pm_relax(&TA_charger_suspend_lock);
 		mutex_unlock(&ta_mutex);
 	} else {
 		battery_log(BAT_LOG_CRTI,
@@ -434,7 +434,7 @@ static void battery_pump_express_algorithm_start(void)
 #endif
 
 	mutex_lock(&ta_mutex);
-	wake_lock(&TA_charger_suspend_lock);
+	__pm_stay_awake(&TA_charger_suspend_lock);
 
 	if (KAL_TRUE == is_ta_connect) {
 		/* check cable impedance */
@@ -559,7 +559,7 @@ static void battery_pump_express_algorithm_start(void)
 #endif
 	}
 
-	wake_unlock(&TA_charger_suspend_lock);
+	__pm_relax(&TA_charger_suspend_lock);
 	mutex_unlock(&ta_mutex);
 }
 #endif

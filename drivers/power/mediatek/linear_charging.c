@@ -133,7 +133,7 @@ kal_bool temp_error_recovery_chr_flag = KAL_TRUE;
   /* // PUMP EXPRESS */
   /* ///////////////////////////////////////////////////////////////////////////////////////// */
 #if defined(CONFIG_MTK_PUMP_EXPRESS_SUPPORT)
-struct wake_lock TA_charger_suspend_lock;
+struct wakeup_source TA_charger_suspend_lock;
 CHR_CURRENT_ENUM ta_charging_current = TA_CHARGING_CURRENT;
 int ta_current_level = 5000;
 int ta_pre_vbat = 0;
@@ -494,7 +494,7 @@ static void battery_pump_express_charger_check(void)
 {
 	if (ta_check_chr_type == KAL_TRUE && BMT_status.charger_type == STANDARD_CHARGER) {
 		mutex_lock(&ta_mutex);
-		wake_lock(&TA_charger_suspend_lock);
+		__pm_stay_awake(&TA_charger_suspend_lock);
 
 		mtk_ta_reset_vchr();
 		mtk_ta_init();
@@ -509,7 +509,7 @@ static void battery_pump_express_charger_check(void)
 			ta_check_chr_type = KAL_TRUE;
 		}
 
-		wake_unlock(&TA_charger_suspend_lock);
+		__pm_relax(&TA_charger_suspend_lock);
 		mutex_unlock(&ta_mutex);
 	}
 
@@ -532,7 +532,7 @@ static void battery_pump_express_algorithm_start(void)
 		cv_voltage = 4200;
 
 	mutex_lock(&ta_mutex);
-	wake_lock(&TA_charger_suspend_lock);
+	__pm_stay_awake(&TA_charger_suspend_lock);
 
 	if (is_ta_connect == KAL_TRUE) {
 		battery_log(BAT_LOG_CRTI, "mtk_ta_algorithm() start\n");
@@ -616,7 +616,7 @@ static void battery_pump_express_algorithm_start(void)
 		battery_log(BAT_LOG_CRTI, "It's not a TA charger, bypass TA algorithm\n");
 	}
 
-	wake_unlock(&TA_charger_suspend_lock);
+	__pm_relax(&TA_charger_suspend_lock);
 	mutex_unlock(&ta_mutex);
 }
 

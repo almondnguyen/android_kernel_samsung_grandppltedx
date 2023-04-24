@@ -104,7 +104,7 @@ static const struct of_device_id mt_battery_common_id[] = {
 MODULE_DEVICE_TABLE(of, mt_battery_common_id);
 #endif
 
-struct wake_lock battery_suspend_lock;
+struct wakeup_source battery_suspend_lock;
 unsigned int g_BatteryNotifyCode = 0x0000;
 unsigned int g_BN_TestMode = 0x0000;
 bool g_bat_init_flag = 0;
@@ -2434,7 +2434,7 @@ static void mt_battery_charger_detect_check(void)
 	if (upmu_is_chr_det() == true) {
 
 		if (!BMT_status.charger_exist)
-			wake_lock(&battery_suspend_lock);
+			__pm_stay_awake(&battery_suspend_lock);
 
 		BMT_status.charger_exist = true;
 
@@ -2463,7 +2463,7 @@ static void mt_battery_charger_detect_check(void)
 
 	} else {
 		if (BMT_status.charger_exist)
-			wake_lock_timeout(&battery_suspend_lock, HZ / 2);
+			__pm_wakeup_event(&battery_suspend_lock, 500);
 
 		fg_first_detect = false;
 
@@ -2520,7 +2520,7 @@ static void do_chrdet_int_task(void)
 			pr_debug("[do_chrdet_int_task] charger exist!\n");
 
 			if (!BMT_status.charger_exist)
-				wake_lock(&battery_suspend_lock);
+				__pm_stay_awake(&battery_suspend_lock);
 			BMT_status.charger_exist = true;
 
 #if defined(CONFIG_POWER_EXT)
@@ -2533,9 +2533,9 @@ static void do_chrdet_int_task(void)
 			pr_debug("[do_chrdet_int_task] charger NOT exist!\n");
 			if (BMT_status.charger_exist) {
 				if (g_platform_boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT)
-					wake_lock(&battery_suspend_lock);
+					__pm_stay_awake(&battery_suspend_lock);
 				else
-					wake_lock_timeout(&battery_suspend_lock, HZ / 2);
+					__pm_wakeup_event(&battery_suspend_lock, 500);
 			}
 			BMT_status.charger_exist = false;
 			BMT_status.charger_type = CHARGER_UNKNOWN;
@@ -3091,9 +3091,9 @@ static int battery_probe(struct platform_device *pdev)
 							 adc_cali_devno, NULL, ADC_CALI_DEVNAME);
 	battery_log(BAT_LOG_CRTI, "[BAT_probe] adc_cali prepare : done !!\n ");
 
-	wake_lock_init(&battery_suspend_lock, WAKE_LOCK_SUSPEND, "battery suspend wakelock");
+	wakeup_source_init(&battery_suspend_lock, "battery suspend wakelock");
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
-	wake_lock_init(&TA_charger_suspend_lock, WAKE_LOCK_SUSPEND, "TA charger suspend wakelock");
+	wakeup_source_init(&TA_charger_suspend_lock, "TA charger suspend wakelock");
 #endif
 
 	/* Integrate with Android Battery Service */
