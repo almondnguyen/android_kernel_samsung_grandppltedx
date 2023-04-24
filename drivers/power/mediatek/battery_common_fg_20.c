@@ -138,7 +138,7 @@ int g_battery_tt_check_flag = 0;	/* 0:default enable check batteryTT, 1:default 
 /* // Global Variable */
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 
-struct wake_lock battery_suspend_lock, battery_meter_lock;
+struct wakeup_source battery_suspend_lock, battery_meter_lock;
 CHARGING_CONTROL battery_charging_control;
 unsigned int g_BatteryNotifyCode = 0x0000;
 unsigned int g_BN_TestMode = 0x0000;
@@ -2552,7 +2552,7 @@ static void mt_battery_charger_detect_check(void)
 	unsigned int pwr;
 #endif
 	if (upmu_is_chr_det() == KAL_TRUE) {
-		wake_lock(&battery_suspend_lock);
+		__pm_stay_awake(&battery_suspend_lock);
 
 #if !defined(CONFIG_MTK_DUAL_INPUT_CHARGER_SUPPORT)
 		BMT_status.charger_exist = KAL_TRUE;
@@ -2602,7 +2602,7 @@ static void mt_battery_charger_detect_check(void)
 #endif
 
 	} else {
-		wake_unlock(&battery_suspend_lock);
+		__pm_relax(&battery_suspend_lock);
 
 		BMT_status.charger_exist = KAL_FALSE;
 		BMT_status.charger_type = CHARGER_UNKNOWN;
@@ -2686,7 +2686,7 @@ void do_chrdet_int_task(void)
 			battery_log(BAT_LOG_CRTI, "[do_chrdet_int_task] charger exist!\n");
 			BMT_status.charger_exist = KAL_TRUE;
 
-			wake_lock(&battery_suspend_lock);
+			__pm_stay_awake(&battery_suspend_lock);
 
 #if defined(CONFIG_POWER_EXT)
 			mt_usb_connect();
@@ -2722,7 +2722,7 @@ void do_chrdet_int_task(void)
 			}
 #endif
 
-			wake_unlock(&battery_suspend_lock);
+			__pm_relax(&battery_suspend_lock);
 
 #if defined(CONFIG_POWER_EXT)
 			mt_usb_disconnect();
@@ -2832,7 +2832,7 @@ int bat_routine_thread(void *x)
 
 	/* Run on a process content */
 	while (1) {
-		wake_lock(&battery_meter_lock);
+		__pm_stay_awake(&battery_meter_lock);
 		mutex_lock(&bat_mutex);
 
 		if (((chargin_hw_init_done == KAL_TRUE) && (battery_suspended == KAL_FALSE))
@@ -2843,7 +2843,7 @@ int bat_routine_thread(void *x)
 			chr_wake_up_bat = KAL_FALSE;
 
 		mutex_unlock(&bat_mutex);
-		wake_unlock(&battery_meter_lock);
+		__pm_relax(&battery_meter_lock);
 
 		battery_log(BAT_LOG_CRTI, "wait event 1\n");
 
@@ -3295,7 +3295,7 @@ static irqreturn_t diso_auxadc_irq_thread(int irq, void *dev_id)
 #endif
 	case OTG_ONLY:
 		BMT_status.charger_exist = KAL_TRUE;
-		wake_lock(&battery_suspend_lock);
+		__pm_stay_awake(&battery_suspend_lock);
 		wake_up_bat();
 		break;
 	case DC_WITH_OTG:
@@ -3304,7 +3304,7 @@ static irqreturn_t diso_auxadc_irq_thread(int irq, void *dev_id)
 		battery_charging_control(CHARGING_CMD_ENABLE, &BMT_status.charger_exist);
 		BMT_status.charger_exist = KAL_FALSE;	/* reset charger status */
 		BMT_status.charger_type = CHARGER_UNKNOWN;
-		wake_unlock(&battery_suspend_lock);
+		__pm_relax(&battery_suspend_lock);
 		wake_up_bat();
 		break;
 	case DC_WITH_USB:
@@ -3368,10 +3368,10 @@ static int battery_probe(struct platform_device *dev)
 	battery_charging_control(CHARGING_CMD_GET_PLATFORM_BOOT_MODE, &g_platform_boot_mode);
 	battery_log(BAT_LOG_CRTI, "[BAT_probe] g_platform_boot_mode = %d\n ", g_platform_boot_mode);
 
-	wake_lock_init(&battery_suspend_lock, WAKE_LOCK_SUSPEND, "battery suspend wakelock");
-	wake_lock_init(&battery_meter_lock, WAKE_LOCK_SUSPEND, "battery meter wakelock");
+	wakeup_source_init(&battery_suspend_lock, "battery suspend wakelock");
+	wakeup_source_init(&battery_meter_lock, "battery meter wakelock");
 #if defined(CONFIG_MTK_PUMP_EXPRESS_SUPPORT) || defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
-	wake_lock_init(&TA_charger_suspend_lock, WAKE_LOCK_SUSPEND, "TA charger suspend wakelock");
+	wakeup_source_init(&TA_charger_suspend_lock, "TA charger suspend wakelock");
 #endif
 
 	/* Integrate with Android Battery Service */

@@ -328,7 +328,7 @@ extern kal_bool g_charging_full_reset_bat_meter;
 extern kal_bool ta_check_chr_type;
 extern kal_bool ta_cable_out_occur;
 extern kal_bool is_ta_connect;
-extern struct wake_lock TA_charger_suspend_lock;
+extern struct wakeup_source TA_charger_suspend_lock;
 #endif
 
 /*****************************************************************************

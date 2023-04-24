@@ -148,7 +148,7 @@ extern int g_temp_status;
 extern bool g_bat_init_flag;
 
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
-extern struct wake_lock TA_charger_suspend_lock;
+extern struct wakeup_source TA_charger_suspend_lock;
 extern bool ta_check_chr_type;
 extern bool ta_cable_out_occur;
 extern bool is_ta_connect;
