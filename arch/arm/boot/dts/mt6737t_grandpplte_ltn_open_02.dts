@@ -11,7 +11,7 @@
 	model = "Samsung GrandPrimePlus LTE LTN OPEN rev02 board based on MT6737T";
 	model_info-chip = <6735>;
 	model_info-platform = "android";
-	model_info-subtype = "mediatek";
+	model_info-subtype = "samsung";
 	model_info-hw_rev = <2>;
 	model_info-hw_rev_end = <2>;
 	compatible = "samsung, GrandPrimePlus LTE LTN OPEN 02", "mediatek,MT6735";
