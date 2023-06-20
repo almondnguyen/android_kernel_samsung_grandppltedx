@@ -10,7 +10,7 @@
 	model = "Samsung GrandPrimePlus LTE EUR rev00 board based on MT6737T";
 	model_info-chip = <6735>;
 	model_info-platform = "android";
-	model_info-subtype = "mediatek";
+	model_info-subtype = "samsung";
 	model_info-hw_rev = <1>;
 	model_info-hw_rev_end = <255>;
 	compatible = "samsung, GrandPrimePlus LTE EUR OPEN 00", "mediatek,MT6735";
