@@ -518,6 +518,30 @@ dtb-$(CONFIG_MACH_DOVE) += dove-cm-a510.dtb \
 dtb-$(CONFIG_ARCH_MEDIATEK) += bx2701-evb1.dtb \
 	mt6589-aquaris5.dtb
 
+# SEA
+dtb-$(CONFIG_ARCH_MT6735) += mt6737t_grandpplte_cis_ser_00.dtb \
+	mt6737t_grandpplte_cis_ser_01.dtb \
+	mt6737t_grandpplte_cis_ser_02.dtb \
+	mt6737t_grandpplte_cis_ser_03.dtb \
+	mt6737t_grandpplte_cis_ser_04.dtb
+
+# LTN
+dtb-$(CONFIG_ARCH_MT6735) += mt6737t_grandpplte_ltn_dtv_01.dtb \
+	mt6737t_grandpplte_ltn_dtv_02.dtb \
+	mt6737t_grandpplte_ltn_dtv_03.dtb \
+	mt6737t_grandpplte_ltn_dtv_04.dtb
+
+dtb-$(CONFIG_ARCH_MT6735) += mt6737t_grandpplte_ltn_open_01.dtb \
+	mt6737t_grandpplte_ltn_open_02.dtb \
+	mt6737t_grandpplte_ltn_open_03.dtb \
+	mt6737t_grandpplte_ltn_open_04.dtb
+
+# EUR
+dtb-$(CONFIG_ARCH_MT6735) += titan6737t_phone_m_00.dtb \
+	titan6737t_phone_m_01.dtb \
+	titan6737t_phone_m_02.dtb \
+	titan6737t_phone_m_03.dtb
+
 DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES))
 #
 numbers := 0 1 2 3 4 5 6 7 8 9
