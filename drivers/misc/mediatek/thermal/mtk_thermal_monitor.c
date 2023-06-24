@@ -190,7 +190,7 @@ do { \
 
 /* extern int force_get_tbat(void); */
 
-static struct wake_lock mtm_wake_lock;
+static struct wakeup_source mtm_wake_lock;
 static unsigned int gpt_remaining_cnt;
 static int last_batt_raw_temp;
 
@@ -261,10 +261,10 @@ static int mtk_thermal_monitor_resume(struct platform_device *dev)
 			gpt_remaining_cnt = GPT5_cmp - GPT5_cnt;
 
 			/* If no wake lock taken and gpt does timeout! */
-			if (!wake_lock_active(&mtm_wake_lock) && !gpt_counting) {
+			if (!mtm_wake_lock.active && !gpt_counting) {
 				THRML_ERROR_LOG("%s wake_lock() counting=%d, cmp=%u, cnt=%u",
 						__func__, gpt_counting, GPT5_cmp, GPT5_cnt);
-				wake_lock(&mtm_wake_lock);
+				__pm_stay_awake(&mtm_wake_lock);
 			}
 		}
 	}
@@ -1649,7 +1649,7 @@ static int __init mtkthermal_init(void)
 	if (NULL == proc_tz_dir_entry)
 		THRML_ERROR_LOG("%s mkdir /proc/mtktz failed\n", __func__);
 #if defined(CONFIG_MTK_THERMAL_TIME_BASE_PROTECTION)
-	wake_lock_init(&mtm_wake_lock, WAKE_LOCK_SUSPEND, "alarm");
+	wakeup_source_init(&mtm_wake_lock, "alarm");
 #endif
 
 #ifdef CONFIG_MTK_THERMAL_EXT_CONTROL
@@ -1679,7 +1679,7 @@ static void __exit mtkthermal_exit(void)
 {
 	THRML_LOG("%s\n", __func__);
 #if defined(CONFIG_MTK_THERMAL_TIME_BASE_PROTECTION)
-	wake_lock_destroy(&mtm_wake_lock);
+	wakeup_source_trash(&mtm_wake_lock);
 #endif
 
 #ifdef CONFIG_MTK_THERMAL_EXT_CONTROL
@@ -1849,17 +1849,17 @@ static int mtk_thermal_wrapper_get_temp
 	/* if batt temp raw data < 60C, release wake lock */
 	if ((tz_last_values[MTK_THERMAL_SENSOR_BATTERY] != NULL) &&	/* batt TZ is registered */
 	    (&(thermal->temperature) == tz_last_values[MTK_THERMAL_SENSOR_BATTERY])) {	/* get batt temp this time */
-		if (wake_lock_active(&mtm_wake_lock)) {
+		if (mtm_wake_lock.active) {
 			nTemperature = mtk_thermal_force_get_batt_temp() * 1000;
 			raw_temp = nTemperature;
 			THRML_ERROR_LOG("[.get_temp] tz: %s wake_lock_active() batt temp=%d\n",
 					thermal->type, nTemperature);
 		}
 
-		if (nTemperature < 59000 && wake_lock_active(&mtm_wake_lock)) {
+		if (nTemperature < 59000 && mtm_wake_lock.active) {
 			/* unlock when only batt temp below 60C */
 			THRML_ERROR_LOG("[.get_temp] tz: %s wake_unlock()\n", thermal->type);
-			wake_unlock(&mtm_wake_lock);
+			wakeup_source_trash(&mtm_wake_lock);
 		}
 
 		last_batt_raw_temp = nTemperature;
