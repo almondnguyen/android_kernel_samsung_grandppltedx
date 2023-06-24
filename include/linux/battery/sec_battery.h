@@ -186,11 +186,11 @@ struct sec_battery_info {
 	struct adc_sample_info	adc_sample[ADC_CH_COUNT];
 
 	/* keep awake until monitor is done */
-	struct wake_lock monitor_wake_lock;
+	struct wakeup_source monitor_wake_lock;
 	struct workqueue_struct *monitor_wqueue;
 	struct delayed_work monitor_work;
 #ifdef CONFIG_SAMSUNG_BATTERY_FACTORY
-	struct wake_lock lpm_wake_lock;
+	struct wakeup_source lpm_wake_lock;
 #endif
 	unsigned int polling_count;
 	unsigned int polling_time;
@@ -261,26 +261,26 @@ struct sec_battery_info {
 	int muic_cable_type;
 	int extended_cable_type;
 
-	struct wake_lock cable_wake_lock;
+	struct wakeup_source cable_wake_lock;
 	struct delayed_work cable_work;
-	struct wake_lock vbus_wake_lock;
+	struct wakeup_source vbus_wake_lock;
 	struct delayed_work siop_work;
-	struct wake_lock siop_wake_lock;
-	struct wake_lock afc_wake_lock;
+	struct wakeup_source siop_wake_lock;
+	struct wakeup_source afc_wake_lock;
 	struct delayed_work afc_work;
 #if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
 	struct delayed_work update_work;
 	struct delayed_work fw_init_work;
 #endif
 	struct delayed_work siop_event_work;
-	struct wake_lock siop_event_wake_lock;
+	struct wakeup_source siop_event_wake_lock;
 	struct delayed_work siop_level_work;
-	struct wake_lock siop_level_wake_lock;
+	struct wakeup_source siop_level_wake_lock;
 	struct delayed_work wc_headroom_work;
-	struct wake_lock wc_headroom_wake_lock;
+	struct wakeup_source wc_headroom_wake_lock;
 #if defined(CONFIG_UPDATE_BATTERY_DATA)
 	struct delayed_work batt_data_work;
-	struct wake_lock batt_data_wake_lock;
+	struct wakeup_source batt_data_wake_lock;
 	char *data_path;
 #endif
 
@@ -337,7 +337,7 @@ struct sec_battery_info {
 #endif
 #if defined(CONFIG_SW_SELF_DISCHARGING)
 	bool sw_self_discharging;
-	struct wake_lock self_discharging_wake_lock;
+	struct wakeup_source self_discharging_wake_lock;
 #endif
 	bool charging_block;
 #if defined(CONFIG_BATTERY_SWELLING)
@@ -366,7 +366,7 @@ struct sec_battery_info {
 	unsigned int misc_event;
 	unsigned int prev_misc_event;
 	struct delayed_work misc_event_work;
-	struct wake_lock misc_event_wake_lock;
+	struct wakeup_source misc_event_wake_lock;
 	struct mutex batt_handlelock;
 	struct mutex current_eventlock;
 };
