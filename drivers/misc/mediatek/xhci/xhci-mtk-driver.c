@@ -80,7 +80,7 @@
 struct xhci_hcd *mtk_xhci;
 static int vbus_on;
 
-static struct wake_lock mtk_xhci_wakelock;
+static struct wakeup_source mtk_xhci_wakelock;
 
 #ifdef CONFIG_MTK_FPGA
 #ifndef CONFIG_USB_MTK_DUALMODE
@@ -755,7 +755,7 @@ static struct typec_switch_data typec_host_driver = {
 
 void mtk_xhci_wakelock_init(void)
 {
-	wake_lock_init(&mtk_xhci_wakelock, WAKE_LOCK_SUSPEND, "xhci.wakelock");
+	wakeup_source_init(&mtk_xhci_wakelock, "xhci.wakelock");
 #ifdef CONFIG_USB_C_SWITCH
 	typec_host_driver.priv_data = NULL;
 	register_typec_switch_callback(&typec_host_driver);
@@ -764,15 +764,15 @@ void mtk_xhci_wakelock_init(void)
 
 void mtk_xhci_wakelock_lock(void)
 {
-	if (!wake_lock_active(&mtk_xhci_wakelock))
-		wake_lock(&mtk_xhci_wakelock);
+	if (!mtk_xhci_wakelock.active)
+		__pm_stay_awake(&mtk_xhci_wakelock);
 	mtk_xhci_mtk_log("done\n");
 }
 
 void mtk_xhci_wakelock_unlock(void)
 {
-	if (wake_lock_active(&mtk_xhci_wakelock))
-		wake_unlock(&mtk_xhci_wakelock);
+	if (mtk_xhci_wakelock.active)
+		__pm_relax(&mtk_xhci_wakelock);
 	mtk_xhci_mtk_log("done\n");
 }
 
