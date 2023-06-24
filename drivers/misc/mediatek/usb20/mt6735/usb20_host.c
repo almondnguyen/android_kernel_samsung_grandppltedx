@@ -383,7 +383,7 @@ void mtk_id_event(int enable)
 	{
 		ep_config_from_table_for_host(mtk_musb);
 		usb_phy_set_host_mode();
-		wake_lock(&mtk_musb->usb_lock);
+		__pm_stay_awake(&mtk_musb->usb_lock);
 
 		/* wait VBUS ready */
 		msleep(100);
@@ -417,8 +417,8 @@ void mtk_id_event(int enable)
 	{
 		DBG(0, "devctl is %x\n", musb_readb(mtk_musb->mregs, MUSB_DEVCTL));
 		musb_writeb(mtk_musb->mregs, MUSB_DEVCTL, 0);
-		if (wake_lock_active(&mtk_musb->usb_lock))
-			wake_unlock(&mtk_musb->usb_lock);
+		if (mtk_musb->usb_lock.active)
+			__pm_relax(&mtk_musb->usb_lock);
 
 		/* for no VBUS sensing IP */
 		/* USB MAC OFF*/
@@ -466,7 +466,7 @@ static void musb_id_pin_work(struct work_struct *data)
 	if (mtk_musb->is_host) {
 		/* setup fifo for host mode */
 		ep_config_from_table_for_host(mtk_musb);
-		wake_lock(&mtk_musb->usb_lock);
+		__pm_stay_awake(&mtk_musb->usb_lock);
 		musb_platform_set_vbus(mtk_musb, 1);
 
 	/* for no VBUS sensing IP*/
@@ -501,8 +501,8 @@ static void musb_id_pin_work(struct work_struct *data)
 	} else {
 		DBG(0, "devctl is %x\n", musb_readb(mtk_musb->mregs, MUSB_DEVCTL));
 		musb_writeb(mtk_musb->mregs, MUSB_DEVCTL, 0);
-		if (wake_lock_active(&mtk_musb->usb_lock))
-			wake_unlock(&mtk_musb->usb_lock);
+		if (mtk_musb->usb_lock.active)
+			__pm_relax(&mtk_musb->usb_lock);
 		musb_platform_set_vbus(mtk_musb, 0);
 
 	/* for no VBUS sensing IP */
