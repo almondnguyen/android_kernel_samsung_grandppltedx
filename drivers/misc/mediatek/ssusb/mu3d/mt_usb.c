@@ -69,8 +69,8 @@ void connection_work(struct work_struct *data)
 
 		is_on = MU3D_ON;
 
-		if (!wake_lock_active(&musb->usb_wakelock))
-			wake_lock(&musb->usb_wakelock);
+		if (!musb->usb_wakelock.active)
+			__pm_stay_awake(&musb->usb_wakelock);
 
 		/* FIXME: Should use usb_udc_start() & usb_gadget_connect(), like usb_udc_softconn_store().
 		 * But have no time to think how to handle. However i think it is the correct way.*/
@@ -82,8 +82,8 @@ void connection_work(struct work_struct *data)
 
 		is_on = MU3D_OFF;
 
-		if (wake_lock_active(&musb->usb_wakelock))
-			wake_unlock(&musb->usb_wakelock);
+		if (musb->usb_wakelock.active)
+			__pm_relax(&musb->usb_wakelock);
 
 		/*FIXME: we should use usb_gadget_disconnect() & usb_udc_stop().  like usb_udc_softconn_store().
 		 * But have no time to think how to handle. However i think it is the correct way.*/
@@ -96,10 +96,10 @@ void connection_work(struct work_struct *data)
 #if 0
 		if ((is_usb_cable == true) && !wake_lock_active(&musb->usb_wakelock)) {
 			mu3d_dbg(K_INFO, "%s Boot wakelock\n", __func__);
-			wake_lock(&musb->usb_wakelock);
+			__pm_stay_awake(&musb->usb_wakelock);
 		} else if ((is_usb_cable == false) && wake_lock_active(&musb->usb_wakelock)) {
 			mu3d_dbg(K_INFO, "%s Boot unwakelock\n", __func__);
-			wake_unlock(&musb->usb_wakelock);
+			__pm_relax(&musb->usb_wakelock);
 		}
 #endif
 		mu3d_dbg(K_INFO, "%s directly return\n", __func__);

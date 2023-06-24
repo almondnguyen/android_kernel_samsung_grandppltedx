@@ -597,7 +597,7 @@ struct musb {
 	unsigned usb_mode;
 	unsigned active_ep;
 	struct work_struct suspend_work;
-	struct wake_lock usb_wakelock;
+	struct wakeup_source usb_wakelock;
 	struct delayed_work connection_work;
 	struct delayed_work check_ltssm_work;
 #ifndef CONFIG_USBIF_COMPLIANCE

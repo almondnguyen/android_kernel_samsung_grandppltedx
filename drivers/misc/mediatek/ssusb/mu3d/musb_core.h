@@ -385,7 +385,7 @@ struct otg_switch_mtk {
 	int is_iddig_registered;
 	struct delayed_work iddig_reg_dwork;
 	struct delayed_work switch_dwork;
-	struct wake_lock xhci_wakelock;
+	struct wakeup_source xhci_wakelock;
 	enum ssusb_otg_mode otg_mode;
 	int is_init_as_host;
 	int iddig_eint_num;
@@ -723,7 +723,7 @@ struct musb {
 	struct work_struct otg_event_work;
 	struct delayed_work connection_work;
 	struct workqueue_struct *wq;
-	struct wake_lock usb_wakelock;
+	struct wakeup_source usb_wakelock;
 
 #ifdef USE_SSUSB_QMU
 	struct tasklet_struct qmu_done;
