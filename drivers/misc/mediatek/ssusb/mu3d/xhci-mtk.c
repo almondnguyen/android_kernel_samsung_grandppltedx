@@ -324,15 +324,15 @@ static void host_ports_disable(struct ssusb_mtk *ssusb)
 
 static void mtk_host_wakelock_lock(struct wake_lock *wakelock)
 {
-	if (!wake_lock_active(wakelock))
-		wake_lock(wakelock);
+	if (!wakelock.active)
+		__pm_stay_awake(wakelock);
 	mu3d_dbg(K_DEBUG, "done\n");
 }
 
 static void mtk_host_wakelock_unlock(struct wake_lock *wakelock)
 {
-	if (wake_lock_active(wakelock))
-		wake_unlock(wakelock);
+	if (wakelock.active)
+		__pm_relax(wakelock);
 	mu3d_dbg(K_DEBUG, "done\n");
 }
 
@@ -686,7 +686,7 @@ int mtk_otg_switch_init(struct ssusb_mtk *ssusb)
 	else
 		switch_set_state(&otg_switch->otg_state, 0);
 
-	wake_lock_init(&otg_switch->xhci_wakelock, WAKE_LOCK_SUSPEND, "xhci.wakelock");
+	wakeup_source_trash(&otg_switch->xhci_wakelock, "xhci.wakelock");
 
 	if (is_eint_used(otg_switch->otg_mode)) {
 		otg_switch->next_idpin_state = IDPIN_IN;

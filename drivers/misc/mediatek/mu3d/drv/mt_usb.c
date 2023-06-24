@@ -156,8 +156,8 @@ void connection_work(struct work_struct *data)
 			set_connect_timestamp();
 #endif
 
-			if (!wake_lock_active(&musb->usb_wakelock))
-				wake_lock(&musb->usb_wakelock);
+			if (!musb->usb_wakelock.active)
+				__pm_stay_awake(&musb->usb_wakelock);
 
 			/* FIXME: Should use usb_udc_start() & usb_gadget_connect(), like usb_udc_softconn_store().
 			 * But have no time to think how to handle. However i think it is the correct way.*/
@@ -176,8 +176,8 @@ void connection_work(struct work_struct *data)
 			 * But have no time to think how to handle. However i think it is the correct way.*/
 			musb_stop(musb);
 
-			if (wake_lock_active(&musb->usb_wakelock))
-				wake_unlock(&musb->usb_wakelock);
+			if (musb->usb_wakelock.active)
+				__pm_relax(&musb->usb_wakelock);
 
 			os_printk(K_INFO, "%s ----Disconnect----\n", __func__);
 		} else {

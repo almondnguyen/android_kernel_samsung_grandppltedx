@@ -2147,7 +2147,7 @@ static void musb_free(struct musb *musb)
 		dma_controller_destroy(c);
 	}
 */
-	wake_lock_destroy(&musb->usb_wakelock);
+	wakeup_source_trash(&musb->usb_wakelock);
 
 	/* added for ssusb: */
 #ifdef CONFIG_USBIF_COMPLIANCE
@@ -2217,7 +2217,7 @@ static int __init musb_init_controller(struct device *dev, int nIrq, void __iome
 
 	_mu3d_musb = musb;
 
-	wake_lock_init(&musb->usb_wakelock, WAKE_LOCK_SUSPEND, "USB.lock");
+	wakeup_source_init(&musb->usb_wakelock, "USB.lock");
 
 	INIT_DELAYED_WORK(&musb->connection_work, connection_work);
 

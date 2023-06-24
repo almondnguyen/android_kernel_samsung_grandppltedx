@@ -1156,7 +1156,7 @@ static void musb_free(struct musb *musb)
 	tasklet_kill(&musb->qmu_done);
 	mu3d_hal_free_qmu_mem(musb);
 #endif
-	wake_lock_destroy(&musb->usb_wakelock);
+	wakeup_source_trash(&musb->usb_wakelock);
 
 	/* added for ssusb: */
 	kfree(musb->xceiv);	/* free the instance allocated in allocate_instance */
@@ -1194,7 +1194,7 @@ static int musb_init_controller(struct musb *musb, struct device *dev, int irq)
 
 	_mu3d_musb = musb;
 
-	wake_lock_init(&musb->usb_wakelock, WAKE_LOCK_SUSPEND, "USB.lock");
+	wakeup_source_trash(&musb->usb_wakelock, "USB.lock");
 
 	musb->wq = create_singlethread_workqueue("usb_work");
 	if (!musb->wq) {
