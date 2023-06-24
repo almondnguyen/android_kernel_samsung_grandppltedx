@@ -517,8 +517,8 @@ void mt_usb_connect(void)
 #endif
 	}
 #endif
-	if (!wake_lock_active(&mtk_musb->usb_lock)) {
-		wake_lock(&mtk_musb->usb_lock);
+	if (!mtk_musb->usb_lock.active) {
+		__pm_stay_awake(&mtk_musb->usb_lock);
 		DBG(0, "lock\n");
 	} else {
 		DBG(0, "already lock\n");
@@ -570,9 +570,9 @@ void mt_usb_disconnect(void)
 #ifndef CONFIG_USB_NOTIFY_LAYER
 	usb_connected = false;
 #endif
-	if (wake_lock_active(&mtk_musb->usb_lock)) {
+	if (mtk_musb->usb_lock.active) {
 		DBG(0, "unlock\n");
-		wake_unlock(&mtk_musb->usb_lock);
+		__pm_relax(&mtk_musb->usb_lock);
 	} else {
 		DBG(0, "lock not active\n");
 	}
@@ -834,8 +834,8 @@ static ssize_t mt_usb_store_cmode(struct device *dev, struct device_attribute *a
 #ifdef CONFIG_USB_MTK_OTG
 			if (cmode == CABLE_MODE_CHRG_ONLY) {
 				if (mtk_musb && mtk_musb->is_host) {	/* shut down USB host for IPO */
-					if (wake_lock_active(&mtk_musb->usb_lock))
-						wake_unlock(&mtk_musb->usb_lock);
+					if (mtk_musb->usb_lock.active)
+						__pm_relax(&mtk_musb->usb_lock);
 					musb_platform_set_vbus(mtk_musb, 0);
 					/* add sleep time to ensure vbus off and disconnect irq processed. */
 					msleep(50);
@@ -1215,7 +1215,7 @@ static int mt_usb_init(struct musb *musb)
 	musb->is_host = false;
 	musb->fifo_size = 8 * 1024;
 
-	wake_lock_init(&musb->usb_lock, WAKE_LOCK_SUSPEND, "USB suspend lock");
+	wakeup_source_init(&musb->usb_lock, "USB suspend lock");
 
 #ifndef FPGA_PLATFORM
 #ifdef CONFIG_ARCH_MT6735
