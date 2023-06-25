@@ -1798,9 +1798,6 @@ struct task_struct {
 #ifdef CONFIG_PREEMPT_MONITOR
 	unsigned long preempt_dur;
 #endif
-#ifdef CONFIG_SDP
-	unsigned int sensitive;
-#endif
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
