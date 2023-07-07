@@ -726,10 +726,11 @@ static struct mt_cpu_freq_info opp_tbl_e1_0[] = {
 	OP(CPU_DVFS_FREQ8, 95000),
 };
 
-/* CPU LEVEL 1, 1.3GHz segment */
+/* CPU LEVEL 1, 1.45GHz segment / ななみ */
 static struct mt_cpu_freq_info opp_tbl_e1_1[] = {
-	OP(CPU_DVFS_FREQ1, 125000),
-	OP(CPU_DVFS_FREQ2, 123125),
+	OP(CPU_DVFS_FREQ0_1, 125000),
+	OP(CPU_DVFS_FREQ1, 123125),
+	OP(CPU_DVFS_FREQ2, 121250),
 	OP(CPU_DVFS_FREQ3_1, 120000),
 	OP(CPU_DVFS_FREQ4, 115000),
 	OP(CPU_DVFS_FREQ5, 110000),
@@ -1072,7 +1073,7 @@ static unsigned int _mt_cpufreq_get_cpu_level(void)
 		case 0x41:
 		case 0x42:
 		case 0x43:
-			return CPU_LEVEL_1;	/* 37T: 1.3G / ななみ */
+			return CPU_LEVEL_1;	/* 37T: 1.45G / ななみ */
 		case 0x49:
 			return CPU_LEVEL_4;	/* 37M: 1.1G */
 		case 0x4A:
