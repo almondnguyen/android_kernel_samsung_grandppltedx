@@ -82,7 +82,7 @@
 #define TOUCH_POINT_MODE			0
 #endif
 
-#define MAX_SUPPORTED_FINGER_NUM		2 /* max 10 */
+#define MAX_SUPPORTED_FINGER_NUM		3 /* max 10 */
 
 #define TC_SECTOR_SZ				8
 
