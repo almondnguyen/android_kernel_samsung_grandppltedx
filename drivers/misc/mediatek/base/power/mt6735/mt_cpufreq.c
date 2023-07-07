@@ -1072,7 +1072,7 @@ static unsigned int _mt_cpufreq_get_cpu_level(void)
 		case 0x41:
 		case 0x42:
 		case 0x43:
-			return CPU_LEVEL_3;	/* 37T: 1.45G */
+			return CPU_LEVEL_1;	/* 37T: 1.3G / ななみ */
 		case 0x49:
 			return CPU_LEVEL_4;	/* 37M: 1.1G */
 		case 0x4A:
