@@ -1698,7 +1698,8 @@ static void destroyWirelessDevice(void)
 static void wlanSetMulticastList(struct net_device *prDev)
 {
 	gPrDev = prDev;
-	schedule_delayed_work(&workq, 0);
+	queue_delayed_work(system_power_efficient_wq,
+		&workq, 0);
 }
 
 /* FIXME: Since we cannot sleep in the wlanSetMulticastList, we arrange

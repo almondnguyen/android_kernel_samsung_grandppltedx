@@ -4509,7 +4509,8 @@ VOID kalSchedScanStopped(IN P_GLUE_INFO_T prGlueInfo)
     /* 20150205 change cfg80211_sched_scan_stopped to work queue to use K thread to send event instead of Tx thread
 		due to sched_scan_mtx dead lock issue by Tx thread serves oid cmds and send event in the same time  */
 	DBGLOG(SCN, TRACE, "start work queue to send event\n");
-	schedule_delayed_work(&sched_workq, 0);
+	queue_delayed_work(system_power_efficient_wq,
+		&sched_workq, 0);
 	DBGLOG(SCN, TRACE, "tx_thread return from kalSchedScanStoppped\n");
 
 }

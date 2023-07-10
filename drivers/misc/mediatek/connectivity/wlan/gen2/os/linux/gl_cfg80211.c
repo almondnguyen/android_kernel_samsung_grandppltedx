@@ -1921,7 +1921,8 @@ int mtk_cfg80211_sched_scan_stop(IN struct wiphy *wiphy, IN struct net_device *n
 	/* GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV); */
 
 	DBGLOG(SCN, TRACE, "start work queue to send event\n");
-	schedule_delayed_work(&sched_workq, 0);
+	queue_delayed_work(system_power_efficient_wq,
+		&sched_workq, 0);
 	DBGLOG(SCN, TRACE, "tx_thread return from kalSchedScanStoppped\n");
 
 	return 0;
