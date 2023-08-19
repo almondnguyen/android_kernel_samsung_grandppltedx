@@ -96,6 +96,14 @@ config ANDROID_FSTAB_FAKE
 	  This is intended to allow early mounting partitions
 	  on devices without DT, or where DT can't be modified.
 
+config ANDROID_FSTAB_FAKE_SYSTEM_BLOCK_DEVICE
+	string "System block device mount path for fake DT fstab"
+	depends on ANDROID_FSTAB_FAKE
+	help
+	  Set the path to the system block device for early mounting
+	  partitions using fake DT fstab.
+	  eg. "/dev/block/platform/dw_mmc/by-name/SYSTEM"
+
 config ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
 	bool "Enable android fstab driver for fake DT fstab"
 	depends on ANDROID_FSTAB_FAKE

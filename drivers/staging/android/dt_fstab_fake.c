@@ -139,7 +139,7 @@ static int __init dt_fstab_proc_init(void)
 	DT_FILE_CREATE(fstab_compatible, "device-tree/firmware/android/fstab/compatible")
 	DT_FILE_CREATE(fstab_name, "device-tree/firmware/android/fstab/name")
 
-	strcpy(systemblockdevice, "/dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system");
+	strcpy(systemblockdevice, CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_BLOCK_DEVICE);
 #ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
 	DT_PARTITION_CREATE1(system)
 #else
