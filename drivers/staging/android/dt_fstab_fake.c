@@ -121,11 +121,13 @@ DT_FILE_INIT(fstab_compatible, "android,fstab")
 DT_FILE_INIT(fstab_name, "fstab")
 
 static char systemblockdevice[65];
+static char vendorblockdevice[65];
 #ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
 DT_PARTITION_INIT1(system, systemblockdevice, "wait", "ro", "ext4", "/system_root")
 #else
 DT_PARTITION_INIT(system, systemblockdevice, "wait", "ro", "ext4")
 #endif
+DT_PARTITION_INIT(vendor, vendorblockdevice, "wait", "ro", "ext4")
 
 static int __init dt_fstab_proc_init(void)
 {
@@ -140,11 +142,13 @@ static int __init dt_fstab_proc_init(void)
 	DT_FILE_CREATE(fstab_name, "device-tree/firmware/android/fstab/name")
 
 	strcpy(systemblockdevice, CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_BLOCK_DEVICE);
+        strcpy(vendorblockdevice, CONFIG_ANDROID_FSTAB_FAKE_VENDOR_BLOCK_DEVICE);
 #ifdef CONFIG_ANDROID_FSTAB_FAKE_SYSTEM_MNT_POINT
 	DT_PARTITION_CREATE1(system)
 #else
 	DT_PARTITION_CREATE(system)
 #endif
+        DT_PARTITION_CREATE(vendor)
 
 	return 0;
 }
@@ -156,6 +160,7 @@ static void __exit dt_fstab_proc_exit(void)
 #else
 	DT_PARTITION_REMOVE(system)
 #endif
+        DT_PARTITION_REMOVE(vendor)
 
 	// Cleanup basic hierarchy
 	DT_REMOVE("device-tree/firmware/android/compatible")
