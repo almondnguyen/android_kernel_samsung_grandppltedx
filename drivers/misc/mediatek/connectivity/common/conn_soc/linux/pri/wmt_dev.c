@@ -118,11 +118,7 @@ static wait_queue_head_t gWmtInitWq;
 P_WMT_PATCH_INFO pPatchInfo = NULL;
 UINT32 pAtchNum = 0;
 
-#if (defined(CONFIG_MTK_GMO_RAM_OPTIMIZE) && !defined(CONFIG_MT_ENG_BUILD))
 #define WMT_EMI_DEBUG_BUF_SIZE (8*1024)
-#else
-#define WMT_EMI_DEBUG_BUF_SIZE (32*1024)
-#endif
 
 static UINT8 gEmiBuf[WMT_EMI_DEBUG_BUF_SIZE];
 UINT8 *buf_emi;

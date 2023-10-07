@@ -47,12 +47,8 @@
 
 #define CMDQ_MAX_ERROR_COUNT            (2)
 #define CMDQ_MAX_RETRY_COUNT            (1)
-/* ram optimization related configuration */
-#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
+
 #define CMDQ_MAX_RECORD_COUNT           (100)
-#else
-#define CMDQ_MAX_RECORD_COUNT           (1024)
-#endif
 
 #define CMDQ_INITIAL_CMD_BLOCK_SIZE     (PAGE_SIZE)
 #define CMDQ_EMERGENCY_BLOCK_SIZE       (256 * 1024)	/* 256 KB command buffer */

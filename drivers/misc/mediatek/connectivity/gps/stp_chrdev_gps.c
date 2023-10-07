@@ -79,11 +79,8 @@ static int GPS_major = GPS_DEV_MAJOR;	/* dynamic allocation */
 module_param(GPS_major, uint, 0);
 static struct cdev GPS_cdev;
 
-#if (defined(CONFIG_MTK_GMO_RAM_OPTIMIZE) && !defined(CONFIG_MT_ENG_BUILD))
 #define STP_GPS_BUFFER_SIZE 2048
-#else
-#define STP_GPS_BUFFER_SIZE MTKSTP_BUFFER_SIZE
-#endif
+
 static unsigned char i_buf[STP_GPS_BUFFER_SIZE];	/* input buffer of read() */
 static unsigned char o_buf[STP_GPS_BUFFER_SIZE];	/* output buffer of write() */
 static struct semaphore wr_mtx, rd_mtx;
