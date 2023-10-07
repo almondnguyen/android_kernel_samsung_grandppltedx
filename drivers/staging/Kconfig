@@ -110,6 +110,4 @@ source "drivers/staging/unisys/Kconfig"
 
 source "drivers/staging/samsung/Kconfig"
 
-source "drivers/staging/vnswap/Kconfig"
-
 endif # STAGING
