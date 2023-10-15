@@ -141,6 +141,7 @@ void pm_restore_gfp_mask(void)
 		saved_gfp_mask = 0;
 	}
 }
+EXPORT_SYMBOL_GPL(pm_restore_gfp_mask);
 
 void pm_restrict_gfp_mask(void)
 {
@@ -149,6 +150,7 @@ void pm_restrict_gfp_mask(void)
 	saved_gfp_mask = gfp_allowed_mask;
 	gfp_allowed_mask &= ~GFP_IOFS;
 }
+EXPORT_SYMBOL_GPL(pm_restrict_gfp_mask);
 
 bool pm_suspended_storage(void)
 {
@@ -1106,6 +1108,7 @@ static void try_to_steal_freepages(struct zone *zone, struct page *page,
 	if (current_order >= pageblock_order / 2 ||
 	    start_type == MIGRATE_RECLAIMABLE ||
 	    start_type == MIGRATE_UNMOVABLE ||
+	    start_type == MIGRATE_MOVABLE ||
 	    page_group_by_mobility_disabled) {
 		int pages;
 
@@ -1113,6 +1116,7 @@ static void try_to_steal_freepages(struct zone *zone, struct page *page,
 
 		/* Claim the whole block if over half of it is free */
 		if (pages >= (1 << (pageblock_order-1)) ||
+				start_type == MIGRATE_MOVABLE ||
 				page_group_by_mobility_disabled)
 			set_pageblock_migratetype(page, start_type);
 	}
@@ -2792,6 +2796,21 @@ got_pg:
 	return page;
 }
 
+#ifdef CONFIG_MT_ENG_BUILD
+#define __LOG_PAGE_ALLOC_ORDER__
+#include <linux/stacktrace.h>
+#endif
+
+#ifdef __LOG_PAGE_ALLOC_ORDER__
+
+static int page_alloc_dump_order_threshold = 4;
+static int page_alloc_log_order_threshold = 3;
+
+/* Jack remove page_alloc_order_log array for non-used */
+module_param_named(dump_order_threshold, page_alloc_dump_order_threshold, int, S_IRUGO | S_IWUSR);
+module_param_named(log_order_threshold, page_alloc_log_order_threshold, int, S_IRUGO | S_IWUSR);
+#endif /* __LOG_PAGE_ALLOC_ORDER__ */
+
 /*
  * This is the 'heart' of the zoned buddy allocator.
  */
@@ -2807,6 +2826,10 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	unsigned int cpuset_mems_cookie;
 	int alloc_flags = ALLOC_WMARK_LOW|ALLOC_CPUSET|ALLOC_FAIR;
 	int classzone_idx;
+#ifdef __LOG_PAGE_ALLOC_ORDER__
+	struct stack_trace trace;
+	unsigned long entries[6] = {0};
+#endif
 
 	gfp_mask &= gfp_allowed_mask;
 
@@ -2855,6 +2878,28 @@ retry_cpuset:
 				preferred_zone, classzone_idx, migratetype);
 	}
 
+#ifdef __LOG_PAGE_ALLOC_ORDER__
+
+#ifdef CONFIG_FREEZER /* Added skip debug log in IPOH */
+	if (unlikely(!atomic_read(&system_freezing_cnt))) {
+#endif
+		if (order >= page_alloc_dump_order_threshold) {
+			trace.nr_entries = 0;
+			trace.max_entries = ARRAY_SIZE(entries);
+			trace.entries = entries;
+			trace.skip = 2;
+
+			save_stack_trace(&trace);
+			trace_dump_allocate_large_pages(page, order, gfp_mask, entries);
+		} else if (order >= page_alloc_log_order_threshold) {
+			trace_debug_allocate_large_pages(page, order, gfp_mask);
+		}
+
+#ifdef CONFIG_FREEZER
+	}
+#endif
+
+#endif /* __LOG_PAGE_ALLOC_ORDER__ */
 	trace_mm_page_alloc(page, order, gfp_mask, migratetype);
 
 out:
@@ -3075,6 +3120,27 @@ static unsigned long nr_free_zone_pages(int offset)
 	return sum;
 }
 
+static unsigned long nr_unallocated_zone_pages(int offset)
+{
+	struct zoneref *z;
+	struct zone *zone;
+
+	/* Just pick one node, since fallback list is circular */
+	unsigned long sum = 0;
+
+	struct zonelist *zonelist = node_zonelist(numa_node_id(), GFP_KERNEL);
+
+	for_each_zone_zonelist(zone, z, zonelist, offset) {
+		unsigned long high = high_wmark_pages(zone);
+		unsigned long left = zone_page_state(zone, NR_FREE_PAGES);
+
+		if (left > high)
+			sum += left - high;
+	}
+
+	return sum;
+}
+
 /**
  * nr_free_buffer_pages - count number of pages beyond high watermark
  *
@@ -3086,6 +3152,15 @@ unsigned long nr_free_buffer_pages(void)
 	return nr_free_zone_pages(gfp_zone(GFP_USER));
 }
 EXPORT_SYMBOL_GPL(nr_free_buffer_pages);
+
+/*
+ * Amount of free RAM allocatable within ZONE_DMA and ZONE_NORMAL
+ */
+unsigned long nr_unallocated_buffer_pages(void)
+{
+	return nr_unallocated_zone_pages(gfp_zone(GFP_USER));
+}
+EXPORT_SYMBOL_GPL(nr_unallocated_buffer_pages);
 
 /**
  * nr_free_pagecache_pages - count number of pages beyond high watermark
@@ -5768,6 +5843,9 @@ void setup_per_zone_wmarks(void)
  */
 static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
 {
+#ifdef CONFIG_FIX_INACTIVE_RATIO
+	zone->inactive_ratio = 1;
+#else
 	unsigned int gb, ratio;
 
 	/* Zone size in gigabytes */
@@ -5778,6 +5856,7 @@ static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
 		ratio = 1;
 
 	zone->inactive_ratio = ratio;
+#endif
 }
 
 static void __meminit setup_per_zone_inactive_ratio(void)

@@ -153,10 +153,6 @@ void prepare_namespace(void);
 void __init load_default_modules(void);
 int __init init_rootfs(void);
 
-#ifdef CONFIG_DEBUG_RODATA
-void mark_rodata_ro(void);
-#endif
-
 extern void (*late_time_init)(void);
 
 extern bool initcall_debug;
@@ -244,6 +240,12 @@ extern bool initcall_debug;
 	static initcall_t __initcall_##fn \
 	__used __section(.security_initcall.init) = fn
 
+#ifdef CONFIG_DEFERRED_INITCALLS
+#define deferred_initcall(fn, id) \
+	static initcall_t __initcall_##fn##id __used \
+	__attribute__((__section__(".deferred_initcall" #id ".init"))) = fn
+#endif
+
 struct obs_kernel_param {
 	const char *str;
 	int (*setup_func)(char *);
@@ -286,6 +288,10 @@ void __init parse_early_options(char *cmdline);
  * be one per module.
  */
 #define module_init(x)	__initcall(x);
+#ifdef CONFIG_DEFERRED_INITCALLS
+#define deferred_module_init(fn) deferred_initcall(fn, 0);
+#define deferred_module_init_sync(fn) deferred_initcall(fn, 0s);
+#endif
 
 /**
  * module_exit() - driver exit entry point
@@ -332,6 +338,10 @@ void __init parse_early_options(char *cmdline);
 	static inline initcall_t __inittest(void)		\
 	{ return initfn; }					\
 	int init_module(void) __attribute__((alias(#initfn)));
+
+#ifdef CONFIG_DEFERRED_INITCALLS
+#define deferred_module_init(fn) module_init(fn)
+#endif
 
 /* This is only required if you want to be unloadable. */
 #define module_exit(exitfn)					\

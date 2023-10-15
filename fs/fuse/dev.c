@@ -7,13 +7,13 @@
 */
 
 #include "fuse_i.h"
+#include "fuse.h"
 
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/poll.h>
 #include <linux/uio.h>
 #include <linux/miscdevice.h>
-#include <linux/namei.h>
 #include <linux/pagemap.h>
 #include <linux/file.h>
 #include <linux/slab.h>
@@ -509,10 +509,21 @@ static void __fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 	spin_unlock(&fc->lock);
 }
 
+void fuse_request_send_ex(struct fuse_conn *fc, struct fuse_req *req,
+	__u32 size)
+{
+	FUSE_IOLOG_INIT(size, req->in.h.opcode);
+	req->isreply = 1;
+	FUSE_IOLOG_START();
+	__fuse_request_send(fc, req);
+	FUSE_IOLOG_END();
+	FUSE_IOLOG_PRINT();
+}
+EXPORT_SYMBOL_GPL(fuse_request_send_ex);
+
 void fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 {
-	req->isreply = 1;
-	__fuse_request_send(fc, req);
+	fuse_request_send_ex(fc, req, 0);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send);
 
@@ -544,10 +555,21 @@ static void fuse_request_send_nowait(struct fuse_conn *fc, struct fuse_req *req)
 	}
 }
 
-void fuse_request_send_background(struct fuse_conn *fc, struct fuse_req *req)
+void fuse_request_send_background_ex(struct fuse_conn *fc, struct fuse_req *req,
+	__u32 size)
 {
+	FUSE_IOLOG_INIT(size, req->in.h.opcode);
+	FUSE_IOLOG_START();
 	req->isreply = 1;
 	fuse_request_send_nowait(fc, req);
+	FUSE_IOLOG_END();
+	FUSE_IOLOG_PRINT();
+}
+EXPORT_SYMBOL_GPL(fuse_request_send_background_ex);
+
+void fuse_request_send_background(struct fuse_conn *fc, struct fuse_req *req)
+{
+	fuse_request_send_background_ex(fc, req, 0);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send_background);
 
@@ -1869,10 +1891,6 @@ static ssize_t fuse_dev_do_write(struct fuse_conn *fc,
 	spin_unlock(&fc->lock);
 
 	err = copy_out_args(cs, &req->out, nbytes);
-	if (req->in.h.opcode == FUSE_CANONICAL_PATH) {
-		req->out.h.error = kern_path((char *)req->out.args[0].value, 0,
-							req->canonical_path);
-	}
 	fuse_copy_finish(cs);
 
 	spin_lock(&fc->lock);

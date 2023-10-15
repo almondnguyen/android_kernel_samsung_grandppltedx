@@ -30,6 +30,12 @@
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/spinlock.h>
+#ifdef CONFIG_MEDIATEK_SOLUTION
+#include <linux/irqchip/mt-eic.h>
+#endif
+#include <linux/sec_class.h>
+
+struct device *sec_key;
 
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
@@ -49,6 +55,7 @@ struct gpio_keys_drvdata {
 	struct mutex disable_lock;
 	struct gpio_button_data data[0];
 };
+static struct device *global_dev;
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -337,6 +344,15 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		input_event(input, type, button->code, !!state);
 	}
 	input_sync(input);
+	input_err(true, global_dev, "%s: code=%d, value=%d state=%d\n",
+		__func__, button->code, button->value, state);
+#ifdef CONFIG_MEDIATEK_SOLUTION
+	/* eic controller does not support dual edge trigger, we should detect each edge on by one */
+	if (state)
+		irq_set_irq_type(bdata->irq, IRQF_TRIGGER_RISING);
+	else
+		irq_set_irq_type(bdata->irq, IRQF_TRIGGER_FALLING);
+#endif
 }
 
 static void gpio_keys_gpio_work_func(struct work_struct *work)
@@ -455,8 +471,8 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 		error = devm_gpio_request_one(&pdev->dev, button->gpio,
 					      GPIOF_IN, desc);
 		if (error < 0) {
-			dev_err(dev, "Failed to request GPIO %d, error %d\n",
-				button->gpio, error);
+			input_err(true, dev, "%s: Failed to request GPIO %d, error %d\n",
+				__func__, button->gpio, error);
 			return error;
 		}
 
@@ -472,9 +488,8 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 		irq = gpio_to_irq(button->gpio);
 		if (irq < 0) {
 			error = irq;
-			dev_err(dev,
-				"Unable to get irq number for GPIO %d, error %d\n",
-				button->gpio, error);
+			input_err(true, dev, "%s: Unable to get irq number for GPIO %d, error %d\n",
+				__func__, button->gpio, error);
 			return error;
 		}
 		bdata->irq = irq;
@@ -485,16 +500,18 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 
 		isr = gpio_keys_gpio_isr;
 		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
-
+#ifdef CONFIG_MEDIATEK_SOLUTION
+		irqflags = IRQF_TRIGGER_FALLING;
+#endif
 	} else {
 		if (!button->irq) {
-			dev_err(dev, "No IRQ specified\n");
+			input_err(true, dev, "%s: No IRQ specified\n", __func__);
 			return -EINVAL;
 		}
 		bdata->irq = button->irq;
 
 		if (button->type && button->type != EV_KEY) {
-			dev_err(dev, "Only EV_KEY allowed for IRQ buttons.\n");
+			input_err(true, dev, "%s: Only EV_KEY allowed for IRQ buttons.\n", __func__);
 			return -EINVAL;
 		}
 
@@ -514,9 +531,8 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	 */
 	error = devm_add_action(&pdev->dev, gpio_keys_quiesce_key, bdata);
 	if (error) {
-		dev_err(&pdev->dev,
-			"failed to register quiesce action, error: %d\n",
-			error);
+		input_err(true, dev, "%s: failed to register quiesce action, error: %d\n",
+			__func__, error);
 		return error;
 	}
 
@@ -530,8 +546,8 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	error = devm_request_any_context_irq(&pdev->dev, bdata->irq,
 					     isr, irqflags, desc, bdata);
 	if (error < 0) {
-		dev_err(dev, "Unable to claim irq %d; error %d\n",
-			bdata->irq, error);
+		input_err(true, dev, "%s: Unable to claim irq %d; error %d\n",
+			__func__, bdata->irq, error);
 		return error;
 	}
 
@@ -614,7 +630,9 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->nbuttons = nbuttons;
 
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
-
+#ifdef CONFIG_MEDIATEK_SOLUTION
+	pdata->name = of_get_property(node, "name", NULL);
+#endif
 	i = 0;
 	for_each_child_of_node(node, pp) {
 		int gpio;
@@ -622,7 +640,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 
 		if (!of_find_property(pp, "gpios", NULL)) {
 			pdata->nbuttons--;
-			dev_warn(dev, "Found button without gpios\n");
+			input_err(true, global_dev,
+				"%s: Found button without gpios\n", __func__);
 			continue;
 		}
 
@@ -630,9 +649,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		if (gpio < 0) {
 			error = gpio;
 			if (error != -EPROBE_DEFER)
-				dev_err(dev,
-					"Failed to get gpio flags, error: %d\n",
-					error);
+				input_err(true, global_dev,
+					"%s: Failed to get gpio flags, error: %d\n", __func__, error);
 			return ERR_PTR(error);
 		}
 
@@ -642,8 +660,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		button->active_low = flags & OF_GPIO_ACTIVE_LOW;
 
 		if (of_property_read_u32(pp, "linux,code", &button->code)) {
-			dev_err(dev, "Button without keycode: 0x%x\n",
-				button->gpio);
+			input_err(true, global_dev,
+				"%s: Button without keycode: 0x%x\n", __func__, button->gpio);
 			return ERR_PTR(-EINVAL);
 		}
 
@@ -681,6 +699,28 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 
 #endif
 
+static ssize_t  sysfs_key_onoff_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
+	int index ;
+	int state = 0;
+	for (index = 0; index < ddata->pdata->nbuttons; index++) {
+		struct gpio_button_data *button;
+		button = &ddata->data[index];
+		state = (gpio_get_value_cansleep(button->button->gpio) ? 1 : 0)\
+			^ button->button->active_low;
+		if (state == 1)
+			break;
+	} 
+        
+	input_info(true, global_dev, "%s: key state:%d\n", __func__, state);
+	return snprintf(buf, 5, "%d\n", state);
+}
+
+static DEVICE_ATTR(sec_key_pressed, 0444 , sysfs_key_onoff_show, NULL);
+
+
 static int gpio_keys_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -690,6 +730,7 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	size_t size;
 	int i, error;
 	int wakeup = 0;
+	global_dev = dev;
 
 	if (!pdata) {
 		pdata = gpio_keys_get_devtree_pdata(dev);
@@ -701,13 +742,15 @@ static int gpio_keys_probe(struct platform_device *pdev)
 			pdata->nbuttons * sizeof(struct gpio_button_data);
 	ddata = devm_kzalloc(dev, size, GFP_KERNEL);
 	if (!ddata) {
-		dev_err(dev, "failed to allocate state\n");
+		input_err(true, global_dev,
+			"%s: failed to allocate state\n", __func__);
 		return -ENOMEM;
 	}
 
 	input = devm_input_allocate_device(dev);
 	if (!input) {
-		dev_err(dev, "failed to allocate input device\n");
+		input_err(true, global_dev,
+			"%s: failed to allocate input device\n", __func__);
 		return -ENOMEM;
 	}
 
@@ -747,17 +790,29 @@ static int gpio_keys_probe(struct platform_device *pdev)
 
 	error = sysfs_create_group(&pdev->dev.kobj, &gpio_keys_attr_group);
 	if (error) {
-		dev_err(dev, "Unable to export keys/switches, error: %d\n",
-			error);
+		input_err(true, global_dev,
+			"%s: Unable to export keys/switches, error: %d\n", __func__, error);
 		return error;
 	}
 
 	error = input_register_device(input);
 	if (error) {
-		dev_err(dev, "Unable to register input device, error: %d\n",
-			error);
+		input_err(true, global_dev,
+			"%s: Unable to register input device, error: %d\n", __func__, error);
 		goto err_remove_group;
 	}
+
+        sec_key = sec_device_create(pdata, "sec_key");
+	if (IS_ERR(sec_key))
+		input_err(true, global_dev, "%s: Failed to create device(sec_key)!\n", __func__);
+        
+        error = device_create_file(sec_key, &dev_attr_sec_key_pressed);
+        if (error) {
+		input_err(true, global_dev, "%s: Failed to create device file in sysfs entries(%s)!\n",
+                                        __func__, dev_attr_sec_key_pressed.attr.name);
+        }
+
+        dev_set_drvdata(sec_key, ddata);
 
 	device_init_wakeup(&pdev->dev, wakeup);
 
@@ -783,12 +838,22 @@ static int gpio_keys_suspend(struct device *dev)
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
 	struct input_dev *input = ddata->input;
 	int i;
+#ifdef CONFIG_MEDIATEK_SOLUTION
+	struct irq_desc *desc;
+#endif
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
+#ifdef CONFIG_MEDIATEK_SOLUTION
+			desc = irq_to_desc(bdata->irq);
+#endif
 			if (bdata->button->wakeup)
 				enable_irq_wake(bdata->irq);
+#ifdef CONFIG_MEDIATEK_SOLUTION
+			else
+				mt_eint_mask(desc->irq_data.hwirq);
+#endif
 		}
 	} else {
 		mutex_lock(&input->mutex);
@@ -806,12 +871,22 @@ static int gpio_keys_resume(struct device *dev)
 	struct input_dev *input = ddata->input;
 	int error = 0;
 	int i;
+#ifdef CONFIG_MEDIATEK_SOLUTION
+	struct irq_desc *desc;
+#endif
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
+#ifdef CONFIG_MEDIATEK_SOLUTION
+			desc = irq_to_desc(bdata->irq);
+#endif
 			if (bdata->button->wakeup)
 				disable_irq_wake(bdata->irq);
+#ifdef CONFIG_MEDIATEK_SOLUTION
+			else
+				mt_eint_unmask(desc->irq_data.hwirq);
+#endif
 		}
 	} else {
 		mutex_lock(&input->mutex);

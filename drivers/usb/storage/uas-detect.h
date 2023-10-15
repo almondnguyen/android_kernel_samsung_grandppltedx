@@ -9,7 +9,8 @@ static int uas_is_interface(struct usb_host_interface *intf)
 		intf->desc.bInterfaceProtocol == USB_PR_UAS);
 }
 
-static int uas_find_uas_alt_setting(struct usb_interface *intf)
+static struct usb_host_interface *uas_find_uas_alt_setting(
+	struct usb_interface *intf)
 {
 	int i;
 
@@ -17,10 +18,10 @@ static int uas_find_uas_alt_setting(struct usb_interface *intf)
 		struct usb_host_interface *alt = &intf->altsetting[i];
 
 		if (uas_is_interface(alt))
-			return alt->desc.bAlternateSetting;
+			return alt;
 	}
 
-	return -ENODEV;
+	return NULL;
 }
 
 static int uas_find_endpoints(struct usb_host_interface *alt,

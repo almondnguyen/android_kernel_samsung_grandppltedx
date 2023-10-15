@@ -124,6 +124,25 @@ static void of_i2c_gpio_get_props(struct device_node *np,
 		of_property_read_bool(np, "i2c-gpio,scl-output-only");
 }
 
+
+static struct i2c_gpio_platform_data *pdata_local;
+static ssize_t i2c_cfg_info_show(struct device *dev,	struct device_attribute *attr, char *buf)
+{
+	if (pdata_local) {
+		return scnprintf(buf, PAGE_SIZE,
+		"sda_pin=%d,scl_pin=%d,sda_is_open_drain=%d,scl_is_open_drain=%d,scl_is_output_only=%d\n",
+		pdata_local->sda_pin,
+		pdata_local->scl_pin,
+		pdata_local->sda_is_open_drain,
+		pdata_local->scl_is_open_drain,
+		pdata_local->scl_is_output_only);
+	} else
+		return scnprintf(buf, PAGE_SIZE, "pdata_local is null\n");
+}
+
+static DEVICE_ATTR(i2c_cfg_info, S_IRUGO, i2c_cfg_info_show, NULL);
+
+
 static int i2c_gpio_probe(struct platform_device *pdev)
 {
 	struct i2c_gpio_private_data *priv;
@@ -166,7 +185,8 @@ static int i2c_gpio_probe(struct platform_device *pdev)
 	adap = &priv->adap;
 	bit_data = &priv->bit_data;
 	pdata = &priv->pdata;
-
+	/* add for test */
+	pdata_local = pdata;
 	if (pdev->dev.of_node) {
 		pdata->sda_pin = sda_pin;
 		pdata->scl_pin = scl_pin;
@@ -214,7 +234,13 @@ static int i2c_gpio_probe(struct platform_device *pdev)
 		strlcpy(adap->name, dev_name(&pdev->dev), sizeof(adap->name));
 	else
 		snprintf(adap->name, sizeof(adap->name), "i2c-gpio%d", pdev->id);
-
+	/* add by wxj in 2016.3.16 */
+	pr_err("%s-%d pdev->id = %d\n", __func__, __LINE__, pdev->id);
+	if (pdev->dev.of_node) {
+		ret = of_property_read_u32(pdev->dev.of_node, "cell-index", &pdev->id);
+		if (ret < 0)
+			pdev->id = 10;
+	}
 	adap->algo_data = bit_data;
 	adap->class = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 	adap->dev.parent = &pdev->dev;
@@ -224,10 +250,11 @@ static int i2c_gpio_probe(struct platform_device *pdev)
 	ret = i2c_bit_add_numbered_bus(adap);
 	if (ret)
 		return ret;
-
+	/* add for test */
+	ret = device_create_file(&pdev->dev, &dev_attr_i2c_cfg_info);
 	platform_set_drvdata(pdev, priv);
 
-	dev_info(&pdev->dev, "using pins %u (SDA) and %u (SCL%s)\n",
+	dev_err(&pdev->dev, "using pins %u (SDA) and %u (SCL%s)\n",
 		 pdata->sda_pin, pdata->scl_pin,
 		 pdata->scl_is_output_only
 		 ? ", no clock stretching" : "");
@@ -273,7 +300,7 @@ static int __init i2c_gpio_init(void)
 
 	ret = platform_driver_register(&i2c_gpio_driver);
 	if (ret)
-		printk(KERN_ERR "i2c-gpio: probe failed: %d\n", ret);
+		pr_err("i2c-gpio: probe failed: %d\n", ret);
 
 	return ret;
 }

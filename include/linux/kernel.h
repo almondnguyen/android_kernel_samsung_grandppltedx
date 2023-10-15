@@ -579,13 +579,16 @@ do {									\
  * let gcc optimize the rest.
  */
 
-#define trace_printk(fmt, ...)				\
-do {							\
-	char _______STR[] = __stringify((__VA_ARGS__));	\
-	if (sizeof(_______STR) > 3)			\
-		do_trace_printk(fmt, ##__VA_ARGS__);	\
-	else						\
-		trace_puts(fmt);			\
+#define trace_printk(fmt, ...)					\
+do {								\
+	extern union sec_debug_level_t sec_debug_level;		\
+	if (sec_debug_level) {							\
+		char _______STR[] = __stringify((__VA_ARGS__));	\
+		if (sizeof(_______STR) > 3)			\
+			do_trace_printk(fmt, ##__VA_ARGS__);	\
+		else						\
+			trace_puts(fmt);			\
+	}						\
 } while (0)
 
 #define do_trace_printk(fmt, args...)					\

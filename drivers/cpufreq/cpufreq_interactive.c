@@ -31,6 +31,13 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 
+#ifdef CONFIG_ARCH_MT6755
+#include <asm/topology.h>
+#include <../misc/mediatek/base/power/mt6755/mt_cpufreq.h>
+unsigned int hispeed_freq_perf = 0;
+unsigned int min_sample_time_perf = 0;
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/cpufreq_interactive.h>
 
@@ -312,13 +319,13 @@ static u64 update_load(int cpu)
 		pcpu->policy->governor_data;
 	u64 now;
 	u64 now_idle;
-	u64 delta_idle;
-	u64 delta_time;
+	unsigned int delta_idle;
+	unsigned int delta_time;
 	u64 active_time;
 
 	now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
-	delta_idle = (now_idle - pcpu->time_in_idle);
-	delta_time = (now - pcpu->time_in_idle_timestamp);
+	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
+	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
 
 	if (delta_time <= delta_idle)
 		active_time = 0;
@@ -348,6 +355,13 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned long flags;
 	u64 max_fvtime;
 
+#ifdef CONFIG_ARCH_MT6755
+	int ppb_idx;
+	/* Default, low power, just make, performance */
+	int freq_idx[4] = {2, 6, 4, 0};
+	int min_sample_t[4] = {80, 20, 20, 80};
+#endif
+
 	if (!down_read_trylock(&pcpu->enable_sem))
 		return;
 	if (!pcpu->governor_enabled)
@@ -367,6 +381,24 @@ static void cpufreq_interactive_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = loadadjfreq / pcpu->policy->cur;
 	tunables->boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
+
+#ifdef CONFIG_ARCH_MT6755
+	ppb_idx = mt_cpufreq_get_ppb_state();
+
+	/* Not to modify if L in default mode */
+	if (ppb_idx == 0 && (arch_get_cluster_id(pcpu->policy->cpu) >= 1)) {
+		tunables->hispeed_freq = pcpu->freq_table[0].frequency;
+		tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
+	} else {
+		tunables->hispeed_freq = pcpu->freq_table[freq_idx[ppb_idx]].frequency;
+		tunables->min_sample_time = min_sample_t[ppb_idx] * USEC_PER_MSEC;
+
+		if (hispeed_freq_perf != 0)
+			tunables->hispeed_freq = hispeed_freq_perf;
+		if (min_sample_time_perf != 0)
+			tunables->min_sample_time = min_sample_time_perf;
+	}
+#endif
 
 	if (cpu_load >= tunables->go_hispeed_load || tunables->boosted) {
 		if (pcpu->policy->cur < tunables->hispeed_freq) {
@@ -785,6 +817,11 @@ static ssize_t store_hispeed_freq(struct cpufreq_interactive_tunables *tunables,
 	if (ret < 0)
 		return ret;
 	tunables->hispeed_freq = val;
+
+#ifdef CONFIG_ARCH_MT6755
+	hispeed_freq_perf = val;
+#endif
+
 	return count;
 }
 
@@ -823,6 +860,11 @@ static ssize_t store_min_sample_time(struct cpufreq_interactive_tunables
 	if (ret < 0)
 		return ret;
 	tunables->min_sample_time = val;
+
+#ifdef CONFIG_ARCH_MT6755
+	min_sample_time_perf = val;
+#endif
+
 	return count;
 }
 
@@ -1198,8 +1240,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		mutex_lock(&gov_lock);
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
-		if (!tunables->hispeed_freq)
-			tunables->hispeed_freq = policy->max;
+		if (tunables) {
+			if (!tunables->hispeed_freq)
+				tunables->hispeed_freq = policy->max;
+		}
 
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);

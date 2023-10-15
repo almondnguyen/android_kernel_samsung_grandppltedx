@@ -540,7 +540,7 @@ static int ext4_has_free_clusters(struct ext4_sb_info *sbi,
 	 * r_blocks_count should always be multiple of the cluster ratio so
 	 * we are safe to do a plane bit shift only.
 	 */
-	rsv = (ext4_r_blocks_count(sbi->s_es) >> sbi->s_cluster_bits) +
+	rsv = (atomic64_read(&sbi->s_r_blocks_count) >> sbi->s_cluster_bits) +
 	      resv_clusters;
 
 	if (free_clusters - (nclusters + rsv + dirty_clusters) <
@@ -555,7 +555,7 @@ static int ext4_has_free_clusters(struct ext4_sb_info *sbi,
 		return 1;
 
 	/* Hm, nope.  Are (enough) root reserved clusters available? */
-	if (uid_eq(sbi->s_resuid, current_fsuid()) ||
+	if (uid_gte(sbi->s_resuid, current_fsuid()) ||
 	    (!gid_eq(sbi->s_resgid, GLOBAL_ROOT_GID) && in_group_p(sbi->s_resgid)) ||
 	    capable(CAP_SYS_RESOURCE) ||
 	    (flags & EXT4_MB_USE_ROOT_BLOCKS)) {

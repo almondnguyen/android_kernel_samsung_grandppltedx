@@ -446,6 +446,7 @@ DEFINE_SIMPLE_ATTRIBUTE(freq_stats_fops, freq_stats_get,
 			freq_stats_set, "%llu\n");
 #endif /*CONFIG_COMMON_CLK_FREQ_STATS_ACCOUNTING*/
 
+/* caller must hold prepare_lock */
 static int clk_debug_create_one(struct clk *clk, struct dentry *pdentry)
 {
 	struct dentry *d;
@@ -2807,6 +2808,42 @@ int of_clk_get_parent_count(struct device_node *np)
 	return of_count_phandle_with_args(np, "clocks", "#clock-cells");
 }
 EXPORT_SYMBOL_GPL(of_clk_get_parent_count);
+
+#ifdef CONFIG_SEC_PM
+static void clock_debug_print_clock(struct clk *c, int level)
+{
+	struct clk *child;
+
+	if (!c || !c->enable_count)
+		return ;
+
+	pr_info("%*s%-*s %11d %12d %11lu %10lu %-3d\n",
+		   level * 3 + 1, "",
+		   30 - level * 3, c->name,
+		   c->enable_count, c->prepare_count, clk_get_rate(c),
+		   clk_get_accuracy(c), clk_get_phase(c));
+
+	hlist_for_each_entry(child, &c->children, child_node)
+		clock_debug_print_clock(child, level + 1);
+}
+
+void clock_debug_print_enabled(void)
+{
+	struct clk *c;
+	struct hlist_head **lists = (struct hlist_head **)all_lists;
+
+	pr_info("   clock                         enable_cnt  prepare_cnt        rate   accuracy   phase\n");
+	pr_info("----------------------------------------------------------------------------------------\n");
+
+	clk_prepare_lock();
+
+	for (; *lists; lists++)
+		hlist_for_each_entry(c, *lists, child_node)
+			clock_debug_print_clock(c, 0);
+
+	clk_prepare_unlock();
+}
+#endif
 
 const char *of_clk_get_parent_name(struct device_node *np, int index)
 {
