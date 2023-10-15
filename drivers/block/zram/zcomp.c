@@ -19,6 +19,9 @@
 #ifdef CONFIG_ZRAM_LZ4_COMPRESS
 #include "zcomp_lz4.h"
 #endif
+#ifdef CONFIG_ZRAM_LZ4K_COMPRESS
+#include "zcomp_lz4k.h"
+#endif
 
 /*
  * single zcomp_strm backend
@@ -47,6 +50,9 @@ static struct zcomp_backend *backends[] = {
 	&zcomp_lzo,
 #ifdef CONFIG_ZRAM_LZ4_COMPRESS
 	&zcomp_lz4,
+#endif
+#ifdef CONFIG_ZRAM_LZ4K_COMPRESS
+	&zcomp_lz4k,
 #endif
 	NULL
 };
@@ -300,14 +306,21 @@ void zcomp_strm_release(struct zcomp *comp, struct zcomp_strm *zstrm)
 {
 	comp->strm_release(comp, zstrm);
 }
-
+#ifdef CONFIG_ZSM
+int zcomp_compress_zram(struct zcomp *comp, struct zcomp_strm *zstrm,
+		const unsigned char *src, size_t *dst_len, int *checksum)
+{
+	return comp->backend->compress(src, zstrm->buffer, dst_len,
+			zstrm->private, checksum);
+}
+#else
 int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
 		const unsigned char *src, size_t *dst_len)
 {
 	return comp->backend->compress(src, zstrm->buffer, dst_len,
 			zstrm->private);
 }
-
+#endif
 int zcomp_decompress(struct zcomp *comp, const unsigned char *src,
 		size_t src_len, unsigned char *dst)
 {
@@ -325,14 +338,12 @@ void zcomp_destroy(struct zcomp *comp)
  * allocate new zcomp and initialize it. return compressing
  * backend pointer or ERR_PTR if things went bad. ERR_PTR(-EINVAL)
  * if requested algorithm is not supported, ERR_PTR(-ENOMEM) in
- * case of allocation error, or any other error potentially
- * returned by functions zcomp_strm_{multi,single}_create.
+ * case of allocation error.
  */
 struct zcomp *zcomp_create(const char *compress, int max_strm)
 {
 	struct zcomp *comp;
 	struct zcomp_backend *backend;
-	int error;
 
 	backend = find_backend(compress);
 	if (!backend)
@@ -344,12 +355,12 @@ struct zcomp *zcomp_create(const char *compress, int max_strm)
 
 	comp->backend = backend;
 	if (max_strm > 1)
-		error = zcomp_strm_multi_create(comp, max_strm);
+		zcomp_strm_multi_create(comp, max_strm);
 	else
-		error = zcomp_strm_single_create(comp);
-	if (error) {
+		zcomp_strm_single_create(comp);
+	if (!comp->stream) {
 		kfree(comp);
-		return ERR_PTR(error);
+		return ERR_PTR(-ENOMEM);
 	}
 	return comp;
 }

@@ -70,13 +70,13 @@ static long ratelimit_pages = 32;
 /*
  * Start background writeback (via writeback threads) at this percentage
  */
-int dirty_background_ratio = 10;
+int dirty_background_ratio = 0;
 
 /*
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
  * dirty_background_ratio * the amount of dirtyable memory
  */
-unsigned long dirty_background_bytes;
+unsigned long dirty_background_bytes = 25 * 1024 * 1024;
 
 /*
  * free highmem will not be subtracted from the total free memory
@@ -87,13 +87,13 @@ int vm_highmem_is_dirtyable;
 /*
  * The generator of dirty data starts writeback at this percentage
  */
-int vm_dirty_ratio = 20;
+int vm_dirty_ratio = 0;
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
  * vm_dirty_ratio * the amount of dirtyable memory
  */
-unsigned long vm_dirty_bytes;
+unsigned long vm_dirty_bytes = 50 * 1024 * 1024;
 
 /*
  * The interval between `kupdate'-style writebacks
@@ -111,6 +111,7 @@ unsigned int dirty_expire_interval = 30 * 100; /* centiseconds */
  * Flag that makes the machine dump writes/reads and block dirtyings.
  */
 int block_dump;
+EXPORT_SYMBOL_GPL(block_dump);
 
 /*
  * Flag that puts the machine in "laptop mode". Doubles as a timeout in jiffies:

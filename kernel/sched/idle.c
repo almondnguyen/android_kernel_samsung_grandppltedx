@@ -7,7 +7,6 @@
 #include <linux/tick.h>
 #include <linux/mm.h>
 #include <linux/stackprotector.h>
-#include <linux/suspend.h>
 
 #include <asm/tlb.h>
 
@@ -15,17 +14,12 @@
 
 #include "sched.h"
 
-/**
- * sched_idle_set_state - Record idle state for the current CPU.
- * @idle_state: State to record.
- */
-void sched_idle_set_state(struct cpuidle_state *idle_state, int index)
-{
-	idle_set_state(this_rq(), idle_state);
-	idle_set_state_idx(this_rq(), index);
-}
-
 static int __read_mostly cpu_idle_force_poll;
+
+#ifdef CONFIG_SW_SELF_DISCHARGING
+bool sdchg_idle_policy_set;
+unsigned int sdchg_idle_poll_mask;
+#endif
 
 void cpu_idle_poll_ctrl(bool enable)
 {
@@ -115,27 +109,24 @@ static void cpuidle_idle_call(void)
 	rcu_idle_enter();
 
 	/*
-	 * Suspend-to-idle ("freeze") is a system state in which all user space
-	 * has been frozen, all I/O devices have been suspended and the only
-	 * activity happens here and in iterrupts (if any).  In that case bypass
-	 * the cpuidle governor and go stratight for the deepest idle state
-	 * available.  Possibly also suspend the local tick and the entire
-	 * timekeeping to prevent timer interrupts from kicking us out of idle
-	 * until a proper wakeup interrupt happens.
-	 */
-	if (idle_should_freeze()) {
-		cpuidle_enter_freeze();
-		local_irq_enable();
-		goto exit_idle;
-	}
-
-	/*
 	 * Ask the cpuidle framework to choose a convenient idle state.
 	 * Fall back to the default arch idle method on errors.
 	 */
 	next_state = cpuidle_select(drv, dev);
-	if (next_state < 0)
-		goto use_default;
+	if (next_state < 0) {
+use_default:
+		/*
+		 * We can't use the cpuidle framework, let's use the default
+		 * idle routine.
+		 */
+		if (current_clr_polling_and_test())
+			local_irq_enable();
+		else
+			arch_cpu_idle();
+
+		goto exit_idle;
+	}
+
 
 	/*
 	 * The idle task must be scheduled, it is pointless to
@@ -193,19 +184,6 @@ exit_idle:
 
 	rcu_idle_exit();
 	start_critical_timings();
-	return;
-
-use_default:
-	/*
-	 * We can't use the cpuidle framework, let's use the default
-	 * idle routine.
-	 */
-	if (current_clr_polling_and_test())
-		local_irq_enable();
-	else
-		arch_cpu_idle();
-
-	goto exit_idle;
 }
 
 /*
@@ -215,6 +193,10 @@ use_default:
  */
 static void cpu_idle_loop(void)
 {
+#ifdef CONFIG_SW_SELF_DISCHARGING
+	bool sdchg_cpu_idle_force_poll = false;
+#endif
+
 	while (1) {
 		/*
 		 * If the arch has a polling bit, we maintain an invariant:
@@ -226,19 +208,27 @@ static void cpu_idle_loop(void)
 		 */
 
 		__current_set_polling();
-		quiet_vmstat();
 		tick_nohz_idle_enter();
 
 		while (!need_resched()) {
 			check_pgt_cache();
 			rmb();
 
-			if (cpu_is_offline(smp_processor_id()))
+			if (cpu_is_offline(smp_processor_id())) {
+				tick_set_cpu_plugoff_flag(1);
 				arch_cpu_idle_dead();
+			}
 
 			local_irq_disable();
 			arch_cpu_idle_enter();
 
+#ifdef CONFIG_SW_SELF_DISCHARGING
+			if (unlikely(sdchg_idle_policy_set && 
+				(sdchg_idle_poll_mask & (1 << raw_smp_processor_id()))))
+				sdchg_cpu_idle_force_poll = true;
+			else
+				sdchg_cpu_idle_force_poll = false;
+#endif
 			/*
 			 * In poll mode we reenable interrupts and spin.
 			 *
@@ -248,7 +238,11 @@ static void cpu_idle_loop(void)
 			 * know that the IPI is going to arrive right
 			 * away
 			 */
+#ifdef CONFIG_SW_SELF_DISCHARGING
+			if (cpu_idle_force_poll || tick_check_broadcast_expired() || sdchg_cpu_idle_force_poll)
+#else
 			if (cpu_idle_force_poll || tick_check_broadcast_expired())
+#endif
 				cpu_idle_poll();
 			else
 				cpuidle_idle_call();

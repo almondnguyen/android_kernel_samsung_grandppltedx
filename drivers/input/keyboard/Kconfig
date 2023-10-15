@@ -675,4 +675,13 @@ config KEYBOARD_CAP1106
 	  To compile this driver as a module, choose M here: the
 	  module will be called cap1106.
 
+config KEYBOARD_TC300K
+	tristate "Coreriver TC300K touchkey"
+	depends on I2C
+	help
+	 Say Y if you want use Coreriver TC300K chip as touchkey.
+
+	 To compile this driver as a module, choose M here: the
+	  module will be called cap1106.
+
 endif

@@ -212,7 +212,7 @@ static int propagate_one(struct mount *m)
 	/* skip if mountpoint isn't covered by it */
 	if (!is_subdir(mp->m_dentry, m->mnt.mnt_root))
 		return 0;
-	if (m->mnt_group_id == last_dest->mnt_group_id) {
+	if (m->mnt_group_id && (m->mnt_group_id == last_dest->mnt_group_id)) {
 		type = CL_MAKE_SHARED;
 	} else {
 		struct mount *n, *p;
@@ -402,33 +402,4 @@ int propagate_umount(struct hlist_head *list)
 	hlist_for_each_entry(mnt, list, mnt_hash)
 		__propagate_umount(mnt);
 	return 0;
-}
-
-/*
- *  Iterates over all slaves, and slaves of slaves.
- */
-static struct mount *next_descendent(struct mount *root, struct mount *cur)
-{
-	if (!IS_MNT_NEW(cur) && !list_empty(&cur->mnt_slave_list))
-		return first_slave(cur);
-	do {
-		if (cur->mnt_slave.next != &cur->mnt_master->mnt_slave_list)
-			return next_slave(cur);
-		cur = cur->mnt_master;
-	} while (cur != root);
-	return NULL;
-}
-
-void propagate_remount(struct mount *mnt)
-{
-	struct mount *m = mnt;
-	struct super_block *sb = mnt->mnt.mnt_sb;
-
-	if (sb->s_op->copy_mnt_data) {
-		m = next_descendent(mnt, m);
-		while (m) {
-			sb->s_op->copy_mnt_data(m->mnt.data, mnt->mnt.data);
-			m = next_descendent(mnt, m);
-		}
-	}
 }

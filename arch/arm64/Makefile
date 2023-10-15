@@ -42,7 +42,6 @@ TEXT_OFFSET := $(shell awk 'BEGIN {srand(); printf "0x%03x000\n", int(512 * rand
 else
 TEXT_OFFSET := 0x00080000
 endif
-
 export	TEXT_OFFSET GZFLAGS
 
 core-y		+= arch/arm64/kernel/ arch/arm64/mm/
@@ -65,6 +64,13 @@ KBUILD_DTBS	:= dtbs
 
 all:	$(KBUILD_IMAGE) $(KBUILD_DTBS)
 
+MTK_PLATFORM := $(CONFIG_MTK_PLATFORM:"%"=%)
+MTK_PROJECT := $(CONFIG_ARCH_MTK_PROJECT:"%"=%)
+export MTK_PLATFORM MTK_PROJECT MTK_TARGET_PROJECT
+-include $(srctree)/scripts/drvgen/drvgen.mk
+archprepare: $(DRVGEN_FILE_LIST)
+dtbs: $(DRVGEN_FILE_LIST)
+
 boot := arch/arm64/boot
 
 Image Image.gz: vmlinux
@@ -79,7 +85,7 @@ zinstall install: vmlinux
 dtbs: scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs
 
-Image-dtb Image.gz-dtb: vmlinux scripts dtbs
+Image.gz-dtb: vmlinux scripts dtbs
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 PHONY += vdso_install
@@ -89,16 +95,6 @@ vdso_install:
 # We use MRPROPER_FILES and CLEAN_FILES now
 archclean:
 	$(Q)$(MAKE) $(clean)=$(boot)
-
-# We need to generate vdso-offsets.h before compiling certain files in kernel/.
-# In order to do that, we should use the archprepare target, but we can't since
-# asm-offsets.h is included in some files used to generate vdso-offsets.h, and
-# asm-offsets.h is built in prepare0, for which archprepare is a dependency.
-# Therefore we need to generate the header after prepare0 has been made, hence
-# this hack.
-prepare: vdso_prepare
-vdso_prepare: prepare0
-	$(Q)$(MAKE) $(build)=arch/arm64/kernel/vdso include/generated/vdso-offsets.h
 
 define archhelp
   echo  '* Image.gz      - Compressed kernel image (arch/$(ARCH)/boot/Image.gz)'

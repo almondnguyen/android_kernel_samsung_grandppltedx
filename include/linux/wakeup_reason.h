@@ -24,4 +24,11 @@ void log_wakeup_reason(int irq);
 void log_suspend_abort_reason(const char *fmt, ...);
 int check_wakeup_reason(int irq);
 
+#ifdef CONFIG_SEC_PM
+#define MAX_WAKEUP_REASON_LEN 256
+extern char last_resume_kernel_reason[];
+extern int last_resume_kernel_reason_len;
+extern int last_resume_kernel_reason_suspend;
+#endif
+
 #endif /* _LINUX_WAKEUP_REASON_H */
