@@ -51,9 +51,6 @@ void get_derived_permission(struct dentry *parent, struct dentry *dentry)
 	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(dentry->d_sb);
 	struct sdcardfs_inode_info *info = SDCARDFS_I(dentry->d_inode);
 	struct sdcardfs_inode_info *parent_info= SDCARDFS_I(parent->d_inode);
-#ifdef CONFIG_SDP
-	struct sdcardfs_dentry_info *parent_dinfo = SDCARDFS_D(parent);
-#endif
 	appid_t appid;
 
 	/* By default, each inode inherits from its parent. 
@@ -157,19 +154,6 @@ void get_derived_permission(struct dentry *parent, struct dentry *dentry)
 		case PERM_ANDROID_KNOX_PACKAGE_DATA:
 		break;
 	}
-#ifdef CONFIG_SDP
-	if((parent_info->perm == PERM_PRE_ROOT) && (parent_dinfo->under_knox) && (parent_dinfo->userid >= 0)) {
-		info->userid = parent_dinfo->userid; 
-	}
-
-	if(parent_dinfo->under_knox) {
-		if(parent_dinfo->permission == PERMISSION_UNDER_ANDROID) {
-			if (parent_dinfo->appid != 0){				
-				info->d_uid = multiuser_get_uid(parent_info->userid, parent_dinfo->appid);
-				}
-		}
-	}
-#endif
 } 
 
 /* set vfs_inode from sdcardfs_inode */

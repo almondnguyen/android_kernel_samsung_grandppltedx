@@ -40,22 +40,6 @@
 #include <linux/ecryptfs.h>
 #include <linux/crypto.h>
 
-#ifdef CONFIG_SDP
-#include <sdp/dek_common.h>
-#include <linux/list.h>
-#include <linux/spinlock.h>
-#endif
-#ifdef CONFIG_DLP
-#include "ecryptfs_dlp.h"
-#endif
-
-#ifdef CONFIG_WTL_ENCRYPTION_FILTER
-#define ENC_NAME_FILTER_MAX_INSTANCE 5
-#define ENC_NAME_FILTER_MAX_LEN (256*5)
-#define ENC_EXT_FILTER_MAX_INSTANCE 60
-#define ENC_EXT_FILTER_MAX_LEN 16
-#endif
-
 #define ECRYPTFS_DEFAULT_IV_BYTES 16
 #define ECRYPTFS_DEFAULT_EXTENT_SIZE 4096
 #define ECRYPTFS_MINIMUM_HEADER_EXTENT_SIZE 8192
@@ -65,10 +49,6 @@
 #define ECRYPTFS_DEFAULT_NUM_USERS 4
 #define ECRYPTFS_MAX_NUM_USERS 32768
 #define ECRYPTFS_XATTR_NAME "user.ecryptfs"
-
-#ifdef CONFIG_SDP
-#define PKG_NAME_SIZE 16
-#endif
 
 void ecryptfs_dump_auth_tok(struct ecryptfs_auth_tok *auth_tok);
 extern void ecryptfs_to_hex(char *dst, char *src, size_t src_size);
@@ -167,7 +147,6 @@ ecryptfs_get_key_payload_data(struct key *key)
 #define ECRYPTFS_TAG_70_DIGEST ECRYPTFS_DEFAULT_HASH
 #define ECRYPTFS_TAG_1_PACKET_TYPE 0x01
 #define ECRYPTFS_TAG_3_PACKET_TYPE 0x8C
-#define ECRYPTFS_DEK_PACKET_TYPE   0xD0 /* dek ecryptfs packet block */
 #define ECRYPTFS_TAG_11_PACKET_TYPE 0xED
 #define ECRYPTFS_TAG_64_PACKET_TYPE 0x40
 #define ECRYPTFS_TAG_65_PACKET_TYPE 0x41
@@ -259,18 +238,6 @@ struct ecryptfs_crypt_stat {
 #define ECRYPTFS_ENCFN_USE_FEK        0x00001000
 #define ECRYPTFS_UNLINK_SIGS          0x00002000
 #define ECRYPTFS_I_SIZE_INITIALIZED   0x00004000
-#ifdef CONFIG_WTL_ENCRYPTION_FILTER
-#define ECRYPTFS_ENCRYPTED_OTHER_DEVICE 0x00008000
-#endif
-#ifdef CONFIG_SDP
-#define ECRYPTFS_DEK_SDP_ENABLED      0x00100000
-#define ECRYPTFS_DEK_IS_SENSITIVE     0x00200000
-#define ECRYPTFS_DEK_MULTI_ENGINE     0x00400000 // eCryptfs header contains engine id.
-#define ECRYPTFS_SDP_IS_CHAMBER_DIR   0x02000000
-#endif
-#ifdef CONFIG_DLP
-#define ECRYPTFS_DLP_ENABLED		  0x04000000
-#endif
 
 	u32 flags;
 	unsigned int file_version;
@@ -292,13 +259,6 @@ struct ecryptfs_crypt_stat {
 	struct mutex cs_tfm_mutex;
 	struct mutex cs_hash_tfm_mutex;
 	struct mutex cs_mutex;
-#ifdef CONFIG_SDP
-	int engine_id;
-	dek_t sdp_dek;
-#endif
-#ifdef CONFIG_DLP
-	struct knox_dlp_data expiry;
-#endif
 };
 
 /* inode private data. */
@@ -392,18 +352,8 @@ struct ecryptfs_mount_crypt_stat {
 #define ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK   0x00000020
 #define ECRYPTFS_GLOBAL_ENCFN_USE_FEK          0x00000040
 #define ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY    0x00000080
-#ifdef CONFIG_WTL_ENCRYPTION_FILTER
-#define ECRYPTFS_ENABLE_FILTERING              0x00000100
-#define ECRYPTFS_ENABLE_NEW_PASSTHROUGH        0x00000200
-#endif
 #ifdef CONFIG_CRYPTO_FIPS
 #define ECRYPTFS_ENABLE_CC                     0x00000400
-#endif
-#ifdef CONFIG_SDP
-#define ECRYPTFS_MOUNT_SDP_ENABLED             0x80000000
-#endif
-#ifdef CONFIG_DLP
-#define ECRYPTFS_MOUNT_DLP_ENABLED             0x40000000
 #endif
 
 	u32 flags;
@@ -416,20 +366,6 @@ struct ecryptfs_mount_crypt_stat {
 	unsigned char global_default_fn_cipher_name[
 		ECRYPTFS_MAX_CIPHER_NAME_SIZE + 1];
 	char global_default_fnek_sig[ECRYPTFS_SIG_SIZE_HEX + 1];
-#ifdef CONFIG_WTL_ENCRYPTION_FILTER
-	int max_name_filter_len;
-	char enc_filter_name[ENC_NAME_FILTER_MAX_INSTANCE]
-				[ENC_NAME_FILTER_MAX_LEN + 1];
-	char enc_filter_ext[ENC_EXT_FILTER_MAX_INSTANCE]
-				[ENC_EXT_FILTER_MAX_LEN + 1];
-#endif
-#ifdef CONFIG_SDP
-	int userid;
-	struct list_head chamber_dir_list;
-	spinlock_t chamber_dir_list_lock;
-
-	int partition_id;
-#endif
 
 };
 
@@ -438,9 +374,6 @@ struct ecryptfs_sb_info {
 	struct super_block *wsi_sb;
 	struct ecryptfs_mount_crypt_stat mount_crypt_stat;
 	struct backing_dev_info bdi;
-#ifdef CONFIG_SDP
-	int userid;
-#endif
 };
 
 /* file private data. */
@@ -820,12 +753,5 @@ int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 			   struct ecryptfs_mount_crypt_stat *mount_crypt_stat);
 int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		       loff_t offset);
-
-#ifdef CONFIG_WTL_ENCRYPTION_FILTER
-extern int is_file_name_match(struct ecryptfs_mount_crypt_stat *mcs,
-			      struct dentry *fp_dentry);
-extern int is_file_ext_match(struct ecryptfs_mount_crypt_stat *mcs,
-			     char *str);
-#endif
 
 #endif /* #ifndef ECRYPTFS_KERNEL_H */
