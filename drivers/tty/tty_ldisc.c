@@ -283,6 +283,9 @@ struct tty_ldisc *tty_ldisc_ref(struct tty_struct *tty)
 {
 	struct tty_ldisc *ld = NULL;
 
+	/*in case there is no ldisc_sem init or it's free already*/
+	WARN_ON(!(&tty->ldisc_sem));
+
 	if (ldsem_down_read_trylock(&tty->ldisc_sem)) {
 		ld = tty->ldisc;
 		if (!ld)
@@ -414,10 +417,6 @@ EXPORT_SYMBOL_GPL(tty_ldisc_flush);
  *	they are not on hot paths so a little discipline won't do
  *	any harm.
  *
- *	The line discipline-related tty_struct fields are reset to
- *	prevent the ldisc driver from re-using stale information for
- *	the new ldisc instance.
- *
  *	Locking: takes termios_rwsem
  */
 
@@ -426,9 +425,6 @@ static void tty_set_termios_ldisc(struct tty_struct *tty, int num)
 	down_write(&tty->termios_rwsem);
 	tty->termios.c_line = num;
 	up_write(&tty->termios_rwsem);
-
-	tty->disc_data = NULL;
-	tty->receive_room = 0;
 }
 
 /**

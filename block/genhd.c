@@ -17,8 +17,17 @@
 #include <linux/kobj_map.h>
 #include <linux/mutex.h>
 #include <linux/idr.h>
+#include <linux/ctype.h>
+#include <linux/fs_uuid.h>
 #include <linux/log2.h>
 #include <linux/pm_runtime.h>
+#include <asm/div64.h>
+
+#ifdef CONFIG_BLOCK_SUPPORT_STLOG
+#include <linux/stlog.h>
+#else
+#define ST_LOG(fmt,...)
+#endif
 
 #include "blk.h"
 
@@ -512,6 +521,11 @@ static void register_disk(struct gendisk *disk)
 	struct hd_struct *part;
 	int err;
 
+#ifdef CONFIG_BLOCK_SUPPORT_STLOG
+	int major 		= disk->major;
+	int first_minor 	= disk->first_minor;
+#endif
+
 	ddev->parent = disk->driverfs_dev;
 
 	dev_set_name(ddev, "%s", disk->disk_name);
@@ -562,11 +576,14 @@ exit:
 	/* announce disk after possible partitions are created */
 	dev_set_uevent_suppress(ddev, 0);
 	kobject_uevent(&ddev->kobj, KOBJ_ADD);
+	ST_LOG("<%s> KOBJ_ADD %d:%d",__func__,major,first_minor);
 
 	/* announce possible partitions */
 	disk_part_iter_init(&piter, disk, 0);
-	while ((part = disk_part_iter_next(&piter)))
+	while ((part = disk_part_iter_next(&piter))){
 		kobject_uevent(&part_to_dev(part)->kobj, KOBJ_ADD);
+		ST_LOG("<%s> KOBJ_ADD %d:%d",__func__,major,first_minor+part->partno);
+	}
 	disk_part_iter_exit(&piter);
 }
 
@@ -637,6 +654,10 @@ void del_gendisk(struct gendisk *disk)
 	struct disk_part_iter piter;
 	struct hd_struct *part;
 
+#ifdef CONFIG_BLOCK_SUPPORT_STLOG	
+	struct device *dev;
+#endif
+
 	disk_del_events(disk);
 
 	/* invalidate stuff */
@@ -666,6 +687,11 @@ void del_gendisk(struct gendisk *disk)
 	if (!sysfs_deprecated)
 		sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
 	pm_runtime_set_memalloc_noio(disk_to_dev(disk), false);
+#ifdef CONFIG_BLOCK_SUPPORT_STLOG
+	dev=disk_to_dev(disk);
+	ST_LOG("<%s> KOBJ_REMOVE %d:%d %s",
+	__func__,MAJOR(dev->devt),MINOR(dev->devt),dev->kobj.name);
+#endif
 	device_del(disk_to_dev(disk));
 }
 EXPORT_SYMBOL(del_gendisk);
@@ -829,7 +855,6 @@ static void disk_seqf_stop(struct seq_file *seqf, void *v)
 	if (iter) {
 		class_dev_iter_exit(iter);
 		kfree(iter);
-		seqf->private = NULL;
 	}
 }
 
@@ -1130,6 +1155,15 @@ static int disk_uevent(struct device *dev, struct kobj_uevent_env *env)
 		cnt++;
 	disk_part_iter_exit(&piter);
 	add_uevent_var(env, "NPARTS=%u", cnt);
+#ifdef CONFIG_USB_STORAGE_DETECT
+	if (disk->flags & GENHD_FL_IF_USB) {
+		add_uevent_var(env, "MEDIAPRST=%d",
+			(disk->flags & GENHD_FL_MEDIA_PRESENT) ? 1 : 0);
+		pr_info("%s %d, disk flag media_present=%d, cnt=%d\n",
+			__func__, __LINE__,
+			(disk->flags & GENHD_FL_MEDIA_PRESENT), cnt);
+	}
+#endif
 	return 0;
 }
 
@@ -1170,6 +1204,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	struct hd_struct *hd;
 	char buf[BDEVNAME_SIZE];
 	int cpu;
+	u64 uptime, in_flight_time, uptime_ms;
 
 	/*
 	if (&disk_to_dev(gp)->kobj.entry == block_class.devices.next)
@@ -1184,8 +1219,13 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 		cpu = part_stat_lock();
 		part_round_stats(cpu, hd);
 		part_stat_unlock();
+		uptime = ktime_to_ms(ktime_get());
+                uptime_ms = do_div(uptime, MSEC_PER_SEC);
+                in_flight_time = gp->queue->in_flight_time;
+                do_div(in_flight_time, USEC_PER_MSEC);
 		seq_printf(seqf, "%4d %7d %s %lu %lu %lu "
-			   "%u %lu %lu %lu %u %u %u %u\n",
+			   "%u %lu %lu %lu %u %u %u %u "
+			   "%lu %lu %lu %lu %llu %lu.%03lu\n",
 			   MAJOR(part_devt(hd)), MINOR(part_devt(hd)),
 			   disk_name(gp, hd->partno, buf),
 			   part_stat_read(hd, ios[READ]),
@@ -1198,7 +1238,14 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 			   jiffies_to_msecs(part_stat_read(hd, ticks[WRITE])),
 			   part_in_flight(hd),
 			   jiffies_to_msecs(part_stat_read(hd, io_ticks)),
-			   jiffies_to_msecs(part_stat_read(hd, time_in_queue))
+			   jiffies_to_msecs(part_stat_read(hd, time_in_queue)),
+			   part_stat_read(hd, discard_ios),
+			   part_stat_read(hd, discard_sectors),
+			   part_stat_read(hd, flush_ios),
+			   gp->queue->flush_ios,
+			   in_flight_time,
+			   (unsigned long)(uptime),
+			   (unsigned long)(uptime_ms)
 			);
 	}
 	disk_part_iter_exit(&piter);
@@ -1401,6 +1448,88 @@ int invalidate_partition(struct gendisk *disk, int partno)
 }
 
 EXPORT_SYMBOL(invalidate_partition);
+
+dev_t blk_lookup_fs_info(struct fs_info *seek)
+{
+	dev_t devt = MKDEV(0, 0);
+	struct class_dev_iter iter;
+	struct device *dev;
+	int best_score = 0;
+
+	class_dev_iter_init(&iter, &block_class, NULL, &disk_type);
+	while (best_score < 3 && (dev = class_dev_iter_next(&iter))) {
+		struct gendisk *disk = dev_to_disk(dev);
+		struct disk_part_iter piter;
+		struct hd_struct *part;
+
+		disk_part_iter_init(&piter, disk, DISK_PITER_INCL_PART0);
+
+		while (best_score < 3 && (part = disk_part_iter_next(&piter))) {
+			int score = part_matches_fs_info(part, seek);
+
+			if (score > best_score) {
+				devt = part_devt(part);
+				best_score = score;
+			}
+		}
+		disk_part_iter_exit(&piter);
+	}
+	class_dev_iter_exit(&iter);
+	return devt;
+}
+EXPORT_SYMBOL_GPL(blk_lookup_fs_info);
+
+/* Caller uses NULL, key to start. For each match found, we return a bdev on
+ * which we have done blkdev_get, and we do the blkdev_put on block devices
+ * that are passed to us. When no more matches are found, we return NULL.
+ */
+struct block_device *next_bdev_of_type(struct block_device *last,
+	const char *key)
+{
+	dev_t devt = MKDEV(0, 0);
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct block_device *next = NULL, *bdev;
+	int got_last = 0;
+
+	if (!key)
+		goto out;
+
+	class_dev_iter_init(&iter, &block_class, NULL, &disk_type);
+	while (!devt && (dev = class_dev_iter_next(&iter))) {
+		struct gendisk *disk = dev_to_disk(dev);
+		struct disk_part_iter piter;
+		struct hd_struct *part;
+
+		disk_part_iter_init(&piter, disk, DISK_PITER_INCL_PART0);
+
+		while ((part = disk_part_iter_next(&piter))) {
+			bdev = bdget(part_devt(part));
+			if (last && !got_last) {
+				if (last == bdev)
+					got_last = 1;
+				continue;
+			}
+
+			if (blkdev_get(bdev, FMODE_READ, 0))
+				continue;
+
+			if (bdev_matches_key(bdev, key)) {
+				next = bdev;
+				break;
+			}
+
+			blkdev_put(bdev, FMODE_READ);
+		}
+		disk_part_iter_exit(&piter);
+	}
+	class_dev_iter_exit(&iter);
+out:
+	if (last)
+		blkdev_put(last, FMODE_READ);
+	return next;
+}
+EXPORT_SYMBOL_GPL(next_bdev_of_type);
 
 /*
  * Disk events - monitor disk events like media change and eject request.
@@ -1644,8 +1773,16 @@ static void disk_check_events(struct disk_events *ev,
 	unsigned long intv;
 	int nr_events = 0, i;
 
+#ifdef CONFIG_USB_STORAGE_DETECT
+	if (!(disk->flags & GENHD_FL_IF_USB))
+		/* check events */
+		events = disk->fops->check_events(disk, clearing);
+	else
+		events = 0;
+#else
 	/* check events */
 	events = disk->fops->check_events(disk, clearing);
+#endif
 
 	/* accumulate pending events and schedule next poll if necessary */
 	spin_lock_irq(&ev->lock);
@@ -1670,8 +1807,16 @@ static void disk_check_events(struct disk_events *ev,
 		if (events & disk->events & (1 << i))
 			envp[nr_events++] = disk_uevents[i];
 
+#ifdef CONFIG_USB_STORAGE_DETECT
+	if (!(disk->flags & GENHD_FL_IF_USB)) {
+		if (nr_events)
+			kobject_uevent_env(&disk_to_dev(disk)->kobj,
+					KOBJ_CHANGE, envp);
+	}
+#else
 	if (nr_events)
 		kobject_uevent_env(&disk_to_dev(disk)->kobj, KOBJ_CHANGE, envp);
+#endif
 }
 
 /*

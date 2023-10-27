@@ -30,7 +30,7 @@ static void derive_crypt_complete(struct crypto_async_request *req, int rc)
 
 /**
  * ext4_derive_key_aes() - Derive a key using AES-128-ECB
- * @deriving_key: Encryption key used for derivation.
+ * @deriving_key: Encryption key used for derivatio.
  * @source_key:   Source key to which to apply derivation.
  * @derived_key:  Derived key.
  *
@@ -71,6 +71,7 @@ static int ext4_derive_key_aes(char deriving_key[EXT4_AES_128_ECB_KEY_SIZE],
 				     EXT4_AES_256_XTS_KEY_SIZE, NULL);
 	res = crypto_ablkcipher_encrypt(req);
 	if (res == -EINPROGRESS || res == -EBUSY) {
+		BUG_ON(req->base.data != &ecr);
 		wait_for_completion(&ecr.completion);
 		res = ecr.res;
 	}
@@ -207,12 +208,7 @@ retry:
 		goto out;
 	}
 	crypt_info->ci_keyring_key = keyring_key;
-	if (keyring_key->type != &key_type_logon) {
-		printk_once(KERN_WARNING
-			    "ext4: key type must be logon\n");
-		res = -ENOKEY;
-		goto out;
-	}
+	BUG_ON(keyring_key->type != &key_type_logon);
 	ukp = ((struct user_key_payload *)keyring_key->payload.data);
 	if (ukp->datalen != sizeof(struct ext4_encryption_key)) {
 		res = -EINVAL;
@@ -221,17 +217,9 @@ retry:
 	master_key = (struct ext4_encryption_key *)ukp->data;
 	BUILD_BUG_ON(EXT4_AES_128_ECB_KEY_SIZE !=
 		     EXT4_KEY_DERIVATION_NONCE_SIZE);
-	if (master_key->size != EXT4_AES_256_XTS_KEY_SIZE) {
-		printk_once(KERN_WARNING
-			    "ext4: key size incorrect: %d\n",
-			    master_key->size);
-		res = -ENOKEY;
-		goto out;
-	}
+	BUG_ON(master_key->size != EXT4_AES_256_XTS_KEY_SIZE);
 	res = ext4_derive_key_aes(ctx.nonce, master_key->raw,
 				  raw_key);
-	if (res)
-		goto out;
 got_key:
 	ctfm = crypto_alloc_ablkcipher(cipher_str, 0, 0);
 	if (!ctfm || IS_ERR(ctfm)) {
@@ -249,7 +237,7 @@ got_key:
 				       ext4_encryption_key_size(mode));
 	if (res)
 		goto out;
-	memzero_explicit(raw_key, sizeof(raw_key));
+	memset(raw_key, 0, sizeof(raw_key));
 	if (cmpxchg(&ei->i_crypt_info, NULL, crypt_info) != NULL) {
 		ext4_free_crypt_info(crypt_info);
 		goto retry;
@@ -260,7 +248,7 @@ out:
 	if (res == -ENOKEY)
 		res = 0;
 	ext4_free_crypt_info(crypt_info);
-	memzero_explicit(raw_key, sizeof(raw_key));
+	memset(raw_key, 0, sizeof(raw_key));
 	return res;
 }
 

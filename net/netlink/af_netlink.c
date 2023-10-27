@@ -981,8 +981,7 @@ netlink_unlock_table(void)
 		wake_up(&nl_table_wait);
 }
 
-struct netlink_compare_arg
-{
+struct netlink_compare_arg {
 	struct net *net;
 	u32 portid;
 };
@@ -2599,7 +2598,6 @@ static int netlink_dump(struct sock *sk)
 	struct netlink_callback *cb;
 	struct sk_buff *skb = NULL;
 	struct nlmsghdr *nlh;
-	struct module *module;
 	int len, err = -ENOBUFS;
 	int alloc_size;
 
@@ -2669,11 +2667,9 @@ static int netlink_dump(struct sock *sk)
 		cb->done(cb);
 
 	nlk->cb_running = false;
-	module = cb->module;
-	skb = cb->skb;
 	mutex_unlock(nlk->cb_mutex);
-	module_put(module);
-	consume_skb(skb);
+	module_put(cb->module);
+	consume_skb(cb->skb);
 	return 0;
 
 errout_skb:
@@ -2979,10 +2975,10 @@ static int netlink_seq_show(struct seq_file *seq, void *v)
 		struct sock *s = v;
 		struct netlink_sock *nlk = nlk_sk(s);
 
-		seq_printf(seq, "%pK %-3d %-6u %08x %-8d %-8d %d %-8d %-8d %-8lu\n",
+		seq_printf(seq, "%pK %-3d %-6d %08x %-8d %-8d %d %-8d %-8d %-8lu\n",
 			   s,
 			   s->sk_protocol,
-			   nlk->portid,
+			   (int)(nlk->portid),
 			   nlk->groups ? (u32)nlk->groups[0] : 0,
 			   sk_rmem_alloc_get(s),
 			   sk_wmem_alloc_get(s),

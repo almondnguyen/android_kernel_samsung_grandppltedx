@@ -202,7 +202,6 @@ journal_err_out:
 static int uuid_is_zero(__u8 u[16])
 {
 	int	i;
-
 	for (i = 0; i < 16; i++)
 		if (u[i])
 			return 0;
@@ -682,8 +681,8 @@ encryption_policy_out:
 			if (err)
 				return err;
 		}
-		if (copy_to_user((void __user *) arg,
-				 sbi->s_es->s_encrypt_pw_salt, 16))
+		if (copy_to_user((void *) arg, sbi->s_es->s_encrypt_pw_salt,
+				 16))
 			return -EFAULT;
 		return 0;
 	}
@@ -697,13 +696,18 @@ encryption_policy_out:
 		err = ext4_get_policy(inode, &policy);
 		if (err)
 			return err;
-		if (copy_to_user((void __user *)arg, &policy, sizeof(policy)))
+		if (copy_to_user((void *)arg, &policy, sizeof(policy)))
 			return -EFAULT;
 		return 0;
 #else
 		return -EOPNOTSUPP;
 #endif
 	}
+	case FS_IOC_INVAL_MAPPING:
+	{
+		return invalidate_mapping_pages(inode->i_mapping, 0, -1);
+	}
+
 	default:
 		return -ENOTTY;
 	}

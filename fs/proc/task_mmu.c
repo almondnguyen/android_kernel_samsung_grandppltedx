@@ -501,9 +501,20 @@ struct mem_size_stats {
 	unsigned long swap;
 	unsigned long nonlinear;
 	u64 pss;
-	u64 swap_pss;
+#ifdef CONFIG_SWAP
+	u64 pswap;
+#endif
+#ifdef CONFIG_ZNDSWAP
+	u64 pswap_zndswap;
+#endif
 };
 
+#ifdef CONFIG_SWAP
+static inline unsigned char swap_count(unsigned char ent)
+{
+	return ent & ~SWAP_HAS_CACHE;	/* may include SWAP_HAS_CONT flag */
+}
+#endif
 
 static void smaps_pte_entry(pte_t ptent, unsigned long addr,
 		unsigned long ptent_size, struct mm_walk *walk)
@@ -519,19 +530,36 @@ static void smaps_pte_entry(pte_t ptent, unsigned long addr,
 	} else if (is_swap_pte(ptent)) {
 		swp_entry_t swpent = pte_to_swp_entry(ptent);
 
+		/* M for pswap interface */
 		if (!non_swap_entry(swpent)) {
-			int mapcount;
+#ifdef CONFIG_SWAP
+			swp_entry_t entry;
+			struct swap_info_struct *p;
+#endif /* CONFIG_SWAP*/
+			mss->swap += ptent_size;
+#ifdef CONFIG_SWAP
+			entry = pte_to_swp_entry(ptent);
+			if (non_swap_entry(entry))
+				return;
+			p = swap_info_get(entry);
+			if (p) {
+				int swapcount = swap_count(p->swap_map[swp_offset(entry)]);
 
-			mss->swap += PAGE_SIZE;
-			mapcount = swp_swapcount(swpent);
-			if (mapcount >= 2) {
-				u64 pss_delta = (u64)PAGE_SIZE << PSS_SHIFT;
+				if (swapcount == 0)
+					swapcount = 1;
 
-				do_div(pss_delta, mapcount);
-				mss->swap_pss += pss_delta;
-			} else {
-				mss->swap_pss += (u64)PAGE_SIZE << PSS_SHIFT;
+#ifdef CONFIG_ZNDSWAP
+				/* It indicates 2ndswap ONLY */
+				if (swp_type(entry) == 1UL)
+					mss->pswap_zndswap += (ptent_size << PSS_SHIFT) / swapcount;
+				else
+					mss->pswap += (ptent_size << PSS_SHIFT) / swapcount;
+#else
+				mss->pswap += (ptent_size << PSS_SHIFT) / swapcount;
+#endif
+				swap_info_unlock(p);
 			}
+#endif /* CONFIG_SWAP*/
 		} else if (is_migration_entry(swpent))
 			page = migration_entry_to_page(swpent);
 	} else if (pte_file(ptent)) {
@@ -688,7 +716,12 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 		   "Anonymous:      %8lu kB\n"
 		   "AnonHugePages:  %8lu kB\n"
 		   "Swap:           %8lu kB\n"
+#ifdef CONFIG_SWAP
 		   "SwapPss:        %8lu kB\n"
+#endif
+#ifdef CONFIG_ZNDSWAP
+		   "PSwap_zndswap:  %8lu kB\n"
+#endif
 		   "KernelPageSize: %8lu kB\n"
 		   "MMUPageSize:    %8lu kB\n"
 		   "Locked:         %8lu kB\n",
@@ -703,7 +736,12 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 		   mss.anonymous >> 10,
 		   mss.anonymous_thp >> 10,
 		   mss.swap >> 10,
-		   (unsigned long)(mss.swap_pss >> (10 + PSS_SHIFT)),
+#ifdef CONFIG_SWAP
+		   (unsigned long)(mss.pswap >> (10 + PSS_SHIFT)),
+#endif
+#ifdef CONFIG_ZNDSWAP
+		   (unsigned long)(mss.pswap_zndswap >> (10 + PSS_SHIFT)),
+#endif
 		   vma_kernel_pagesize(vma) >> 10,
 		   vma_mmu_pagesize(vma) >> 10,
 		   (vma->vm_flags & VM_LOCKED) ?

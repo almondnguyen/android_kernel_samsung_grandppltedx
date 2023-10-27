@@ -18,7 +18,12 @@
 #include <asm/mach-types.h>
 #include <asm/smp_plat.h>
 #include <asm/system_misc.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
 
+DECLARE_PER_CPU(struct sec_debug_core_t, sec_debug_core_reg);
+DECLARE_PER_CPU(struct sec_debug_mmu_reg_t, sec_debug_mmu_reg);
+#endif
 extern void relocate_new_kernel(void);
 extern const unsigned int relocate_new_kernel_size;
 
@@ -29,7 +34,6 @@ extern unsigned long kexec_boot_atags;
 
 static atomic_t waiting_for_crash_ipi;
 
-static unsigned long dt_mem;
 /*
  * Provide a dummy crash_notes definition while crash dump arrives to arm.
  * This prevents breakage of crash_notes attribute in kernel/ksysfs.c.
@@ -65,7 +69,7 @@ int machine_kexec_prepare(struct kimage *image)
 			return err;
 
 		if (be32_to_cpu(header) == OF_DT_HEADER)
-			dt_mem = current_segment->mem;
+			kexec_boot_atags = current_segment->mem;
 	}
 	return 0;
 }
@@ -79,9 +83,11 @@ void machine_crash_nonpanic_core(void *unused)
 	struct pt_regs regs;
 
 	crash_setup_regs(&regs, NULL);
-	printk(KERN_DEBUG "CPU %u will stop doing anything useful since another CPU has crashed\n",
-	       smp_processor_id());
 	crash_save_cpu(&regs, smp_processor_id());
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_save_mmu_reg(&per_cpu(sec_debug_mmu_reg, smp_processor_id()));
+	sec_debug_save_core_reg(&per_cpu(sec_debug_core_reg, smp_processor_id()));
+#endif
 	flush_cache_all();
 
 	set_cpu_online(smp_processor_id(), false);
@@ -131,8 +137,6 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	crash_save_cpu(regs, smp_processor_id());
 	machine_kexec_mask_interrupts();
-
-	printk(KERN_INFO "Loading crashdump kernel...\n");
 }
 
 /*
@@ -164,12 +168,12 @@ void machine_kexec(struct kimage *image)
 	reboot_code_buffer = page_address(image->control_code_page);
 
 	/* Prepare parameters for reboot_code_buffer*/
-	set_kernel_text_rw();
 	kexec_start_address = image->start;
 	kexec_indirection_page = page_list;
 	kexec_mach_type = machine_arch_type;
-	kexec_boot_atags = dt_mem ?: image->start - KEXEC_ARM_ZIMAGE_OFFSET
-				     + KEXEC_ARM_ATAGS_OFFSET;
+	if (!kexec_boot_atags)
+		kexec_boot_atags = image->start - KEXEC_ARM_ZIMAGE_OFFSET + KEXEC_ARM_ATAGS_OFFSET;
+
 
 	/* copy our kernel relocation code to the control code page */
 	reboot_entry = fncpy(reboot_code_buffer,

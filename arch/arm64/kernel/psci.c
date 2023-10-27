@@ -31,6 +31,11 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 #include <asm/system_misc.h>
+#include <mtk_hibernate_core.h>
+
+#ifdef MTK_IRQ_NEW_DESIGN
+#include <linux/irqchip/mtk-gic-extend.h>
+#endif
 
 #define PSCI_POWER_STATE_TYPE_STANDBY		0
 #define PSCI_POWER_STATE_TYPE_POWER_DOWN	1
@@ -427,6 +432,8 @@ int __init psci_init(void)
 	return init_fn(np);
 }
 
+#ifdef CONFIG_SMP
+
 static int __init cpu_psci_cpu_init(struct device_node *dn, unsigned int cpu)
 {
 	return 0;
@@ -447,7 +454,9 @@ static int cpu_psci_cpu_boot(unsigned int cpu)
 	int err = psci_ops.cpu_on(cpu_logical_map(cpu), __pa(secondary_entry));
 	if (err)
 		pr_err("failed to boot CPU%d (%d)\n", cpu, err);
-
+#ifdef MTK_IRQ_NEW_DESIGN
+	gic_clear_primask();
+#endif
 	return err;
 }
 
@@ -470,7 +479,9 @@ static void cpu_psci_cpu_die(unsigned int cpu)
 	struct psci_power_state state = {
 		.type = PSCI_POWER_STATE_TYPE_POWER_DOWN,
 	};
-
+#ifdef MTK_IRQ_NEW_DESIGN
+	gic_set_primask();
+#endif
 	ret = psci_ops.cpu_off(state);
 
 	pr_crit("unable to power off CPU%u (%d)\n", cpu, ret);
@@ -505,11 +516,23 @@ static int cpu_psci_cpu_kill(unsigned int cpu)
 	return 0;
 }
 #endif
+#endif
 
 static int psci_suspend_finisher(unsigned long index)
 {
 	struct psci_power_state *state = __get_cpu_var(psci_power_state);
 
+#ifdef CONFIG_MTK_HIBERNATION
+	if (index == POWERMODE_HIBERNATE) {
+		int ret;
+
+		pr_warn("%s: hibernating\n", __func__);
+		ret = swsusp_arch_save_image(0);
+		if (ret)
+			pr_err("%s: swsusp_arch_save_image fail: %d", __func__, ret);
+		return ret;
+	}
+#endif
 	return psci_ops.cpu_suspend(state[index - 1],
 				    virt_to_phys(cpu_resume));
 }
@@ -525,6 +548,10 @@ static int __maybe_unused cpu_psci_cpu_suspend(unsigned long index)
 	if (WARN_ON_ONCE(!index))
 		return -EINVAL;
 
+#ifdef CONFIG_MTK_HIBERNATION
+	if (index == POWERMODE_HIBERNATE)
+		return __cpu_suspend(index, psci_suspend_finisher);
+#endif
 	if (state[index - 1].type == PSCI_POWER_STATE_TYPE_STANDBY)
 		ret = psci_ops.cpu_suspend(state[index - 1], 0);
 	else
@@ -539,6 +566,7 @@ const struct cpu_operations cpu_psci_ops = {
 	.cpu_init_idle	= cpu_psci_cpu_init_idle,
 	.cpu_suspend	= cpu_psci_cpu_suspend,
 #endif
+#ifdef CONFIG_SMP
 	.cpu_init	= cpu_psci_cpu_init,
 	.cpu_prepare	= cpu_psci_cpu_prepare,
 	.cpu_boot	= cpu_psci_cpu_boot,
@@ -546,6 +574,7 @@ const struct cpu_operations cpu_psci_ops = {
 	.cpu_disable	= cpu_psci_cpu_disable,
 	.cpu_die	= cpu_psci_cpu_die,
 	.cpu_kill	= cpu_psci_cpu_kill,
+#endif
 #endif
 };
 
