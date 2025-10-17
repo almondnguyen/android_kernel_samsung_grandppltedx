@@ -264,6 +264,7 @@
 
 #define CPUFREQ_BOUNDARY_FOR_FHCTL (CPU_DVFS_FREQ4)	/* if cross 1040MHz when DFS, don't used FHCTL */
 #define CPUFREQ_FIX_FREQ_FOR_ES	(CPU_DVFS_FREQ4)
+#define CPU_DVFS_FREQ_OC1 (1600000)	/* KHz - Overclock 1.6GHz */
 #endif
 
 #define OP(khz, volt) {			\
@@ -812,6 +813,7 @@ static struct mt_cpu_freq_info opp_tbl_e1_0[] = {
 
 /* CPU LEVEL 1, 1.3GHz segment */
 static struct mt_cpu_freq_info opp_tbl_e1_1[] = {
+	OP(CPU_DVFS_FREQ_OC1, 130000),   // 1.6GHz OC @ ~1.30V
 	OP(CPU_DVFS_FREQ1, 125000),
 	OP(CPU_DVFS_FREQ2, 123125),
 	OP(CPU_DVFS_FREQ3, 120625),
