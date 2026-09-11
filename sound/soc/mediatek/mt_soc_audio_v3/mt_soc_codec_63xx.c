@@ -2133,8 +2133,32 @@ static int Speaker_Amp_Get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 	return 0;
 }
 
+extern int accdet_get_cable_type(void);
+
+/*
+ * The audio HAL applies the speaker route for every wired output device
+ * (it has no headset_output path), which leaves a wired headset silent.
+ * While the accdet reports a cable in the jack, translate speaker amp
+ * requests into headphone amp requests so audio is heard on the
+ * wired headset.
+ */
 static int Speaker_Amp_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
+	int request = ucontrol->value.integer.value[0];
+
+	pr_warn("%s() value = %ld\n ", __func__, ucontrol->value.integer.value[0]);
+
+	if (accdet_get_cable_type() != 0 /* NO_DEVICE */) {
+		struct snd_ctl_elem_value u;
+
+		memset(&u, 0, sizeof(u));
+		u.value.integer.value[0] = request;
+		Audio_AmpL_Set(kcontrol, &u);
+		Audio_AmpR_Set(kcontrol, &u);
+		return 0;
+	}
+
+
 	pr_warn("%s() value = %ld\n ", __func__, ucontrol->value.integer.value[0]);
 	if ((ucontrol->value.integer.value[0] == true)
 	    && (mCodec_data->mAudio_Ana_DevicePower[AUDIO_ANALOG_DEVICE_OUT_SPEAKERL] == false)) {
