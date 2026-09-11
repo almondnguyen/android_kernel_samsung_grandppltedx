@@ -2152,6 +2152,11 @@ static int Speaker_Amp_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 		struct snd_ctl_elem_value u;
 
 		memset(&u, 0, sizeof(u));
+		if (request
+		    && mCodec_data->mAudio_Ana_DevicePower[AUDIO_ANALOG_DEVICE_OUT_SPEAKERL]) {
+			mCodec_data->mAudio_Ana_DevicePower[AUDIO_ANALOG_DEVICE_OUT_SPEAKERL] = false;
+			Speaker_Amp_Change(false);
+		}
 		u.value.integer.value[0] = request;
 		Audio_AmpL_Set(kcontrol, &u);
 		Audio_AmpR_Set(kcontrol, &u);
