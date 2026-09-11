@@ -87,6 +87,15 @@ static int pre_status;
 static int pre_state_swctrl;
 static int accdet_status = PLUG_OUT;
 static int cable_type = NO_DEVICE;
+/*
+ * The audio HAL has no headset_output mixer path: a WIRED_HEADSET report
+ * falls back to the speaker. Report every wired connection as headphone
+ * (HEADSET_NO_MIC) so audio routes to the jack.
+ */
+static inline int accdet_report_cable(int type)
+{
+	return (type == HEADSET_MIC) ? HEADSET_NO_MIC : type;
+}
 #ifdef CONFIG_ACCDET_PIN_RECOGNIZATION
 /*add for new feature PIN recognition*/
 static int cable_pin_recognition;
@@ -299,7 +308,7 @@ static inline void headset_plug_out(void)
 #if defined(CONFIG_SEC_JACK_SYSFS)
 	earjack_priv.jack.jack_det = cable_type;
 #endif
-	switch_set_state((struct switch_dev *)&accdet_data, cable_type);
+	switch_set_state((struct switch_dev *)&accdet_data, accdet_report_cable(cable_type));
 	ACCDET_DEBUG(" [accdet] set state in cable_type = NO_DEVICE\n");
 
 }
@@ -542,7 +551,7 @@ static void accdet_eint_work_callback(struct work_struct *work)
 #if defined(CONFIG_SEC_JACK_SYSFS)
 		earjack_priv.jack.jack_det = cable_type;
 #endif
-		switch_set_state((struct switch_dev *)&accdet_data, cable_type);/* report plug-state */
+		switch_set_state((struct switch_dev *)&accdet_data, accdet_report_cable(cable_type));/* report plug-state */
 		ACCDET_INFO("[Accdet]report headset state[%d]=%d\n", accdet_status, cable_type);
 #endif
 		/*enable ACCDET unit*/
@@ -1286,7 +1295,7 @@ static void accdet_work_callback(struct work_struct *work)
 #if defined(CONFIG_SEC_JACK_SYSFS)
 		earjack_priv.jack.jack_det = cable_type;
 #endif
-		switch_set_state((struct switch_dev *)&accdet_data, cable_type);
+		switch_set_state((struct switch_dev *)&accdet_data, accdet_report_cable(cable_type));
 	} else
 		ACCDET_DEBUG("[Accdet] Headset has plugged out don't set accdet state\n");
 	mutex_unlock(&accdet_eint_irq_sync_mutex);
@@ -2051,7 +2060,7 @@ void mt_accdet_pm_restore_noirq(void)
 #if defined(CONFIG_SEC_JACK_SYSFS)
 	earjack_priv.jack.jack_det = cable_type;
 #endif
-	switch_set_state((struct switch_dev *)&accdet_data, cable_type);
+	switch_set_state((struct switch_dev *)&accdet_data, accdet_report_cable(cable_type));
 
 	if (cable_type == NO_DEVICE) {
 #ifdef CONFIG_ACCDET_PIN_RECOGNIZATION
