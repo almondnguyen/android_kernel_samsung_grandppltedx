@@ -34,7 +34,6 @@ extern "C" {
 #endif
 
 #if 0
-#define CONFIG_CPU_DVFS_PERFORMANCE_TEST     1       /* fix at max freq for perf test */
 #define CONFIG_CPU_DVFS_FFTT_TEST            1       /* FF TT SS volt test */
 #endif
 
