@@ -3502,7 +3502,14 @@ static int pmic_thread_kthread(void *x)
 
 		pmic_int_handler();
 
-		pmic_wrap_eint_clr(0x0);
+		/* clear all group flags: groups 1-3 were never cleared and their
+		 * latched flags re-fire the EINT in a ~2/s wake storm */
+		{
+			int grp;
+
+			for (grp = 0; grp < 4; grp++)
+				pmic_wrap_eint_clr(grp);
+		}
 		/*PMICLOG("[PMIC_INT] pmic_wrap_eint_clr(0x0);\n"); */
 
 		for (i = 0; i < ARRAY_SIZE(interrupts); i++) {
